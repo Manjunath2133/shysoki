@@ -6,7 +6,8 @@ const Tesseract = require('tesseract.js');
 class AIService {
   constructor(keySets) {
     this.keySets = keySets;
-    this.currentIndices = { openai: 0, gemini: 0, groq: 0 };
+    this.currentIndices = { openai: 0, gemini: 0, groq: 0, local: 0 };
+    this.providerCooldowns = { openai: 0, gemini: 0, groq: 0 };
     this.history = [];
     
     this._initializeClients();
@@ -16,10 +17,11 @@ class AIService {
     this.clients = {
       openai: (this.keySets.openai || []).map(key => this._isValidKey(key, 'sk-') ? new OpenAI({ apiKey: key.trim() }) : null).filter(Boolean),
       gemini: (this.keySets.gemini || []).map(key => this._isValidKey(key, 'AIza') ? new GoogleGenerativeAI(key.trim()) : null).filter(Boolean),
-      groq: (this.keySets.groq || []).map(key => this._isValidKey(key, 'gsk_') ? new Groq({ apiKey: key.trim() }) : null).filter(Boolean)
+      groq: (this.keySets.groq || []).map(key => this._isValidKey(key, 'gsk_') ? new Groq({ apiKey: key.trim() }) : null).filter(Boolean),
+      local: [new OpenAI({ apiKey: 'ollama', baseURL: 'http://127.0.0.1:11434/v1' })] // Ollama Fallback (IP is more reliable than 'localhost' on some systems when offline)
     };
 
-    console.log(`📡 AI Service Initialized: OpenAI(${this.clients.openai.length}), Gemini(${this.clients.gemini.length}), Groq(${this.clients.groq.length})`);
+    console.log(`📡 AI Service Initialized: OpenAI(${this.clients.openai.length}), Gemini(${this.clients.gemini.length}), Groq(${this.clients.groq.length}), Local(1)`);
   }
 
   _isValidKey(key, prefix) {
@@ -50,14 +52,22 @@ class AIService {
 
     const prompt = this._buildPrompt(transcript, lastQuestion, context, screenshotBase64, ocrText);
     
-    const providers = ['openai', 'gemini', 'groq'];
+    const providers = ['openai', 'gemini', 'groq', 'local'];
 
     for (const providerName of providers) {
+      // Check cooldown (skip if provider failed recently)
+      if (this.providerCooldowns[providerName] && Date.now() < this.providerCooldowns[providerName]) {
+        console.log(`⏳ Skipping ${providerName} (Cooldown active)`);
+        continue;
+      }
+
       const clients = this.clients[providerName];
       if (!clients || clients.length === 0) continue;
 
+      let allKeysFailed = true;
       for (let i = 0; i < clients.length; i++) {
-        const currentIndex = (this.currentIndices[providerName] + i) % clients.length;
+        const baseIndex = this.currentIndices[providerName] || 0;
+        const currentIndex = (baseIndex + i) % clients.length;
         const client = clients[currentIndex];
 
         try {
@@ -66,10 +76,15 @@ class AIService {
           
           this.currentIndices[providerName] = currentIndex;
           console.log(`✅ Success with ${providerName}`);
+          allKeysFailed = false;
           return { provider: providerName, text: response };
         } catch (error) {
           const errMsg = error.message || String(error);
           console.error(`❌ ${providerName} Key #${currentIndex + 1} failed:`, errMsg);
+          
+          if (providerName === 'local') {
+             console.error('🛠️ Local Provider Error Details:', error);
+          }
           
           if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('Too Many Requests')) {
              console.log(`🔄 Quota exceeded for ${providerName} Key #${currentIndex + 1}, rotating...`);
@@ -84,13 +99,19 @@ class AIService {
           continue;
         }
       }
+
+      // If we reach here, all keys for this provider failed. Set a cooldown.
+      if (providerName !== 'local') {
+        this.providerCooldowns[providerName] = Date.now() + 60000; // 60s cooldown
+        console.log(`⏸️ ${providerName} placed on cooldown for 60s.`);
+      }
     }
 
     throw new Error('All AI providers and backup keys failed. Please check your .env file and ensure keys are valid.');
   }
 
   async _callProvider(name, client, prompt, screenshotBase64) {
-    if (name === 'openai') return await this._callOpenAI(client, prompt, screenshotBase64);
+    if (name === 'openai' || name === 'local') return await this._callOpenAI(client, prompt, screenshotBase64, name === 'local');
     if (name === 'gemini') return await this._callGemini(client, prompt, screenshotBase64);
     if (name === 'groq') return await this._callGroq(client, prompt);
   }
@@ -119,7 +140,24 @@ class AIService {
     return chatCompletion.choices[0].message.content;
   }
 
-  async _callOpenAI(client, prompt, screenshotBase64) {
+  async _callOpenAI(client, prompt, screenshotBase64, isLocal = false) {
+    if (isLocal) {
+        const axios = require('axios');
+        console.log('🔗 Calling Ollama via Axios (Direct Local)...');
+        try {
+            const response = await axios.post('http://127.0.0.1:11434/api/chat', {
+                model: 'llama3',
+                messages: [{ role: 'user', content: prompt }],
+                stream: false
+            }, { timeout: 30000 });
+            
+            return response.data.message.content;
+        } catch (e) {
+            console.error('❌ Ollama Direct Call Failed:', e.message);
+            throw e;
+        }
+    }
+
     const messages = [
       {
         role: 'user',
@@ -177,7 +215,8 @@ OUTPUT FORMAT:
 - Content: Strategy and talking points.
 - Code: Full solution.
 
-Be ultra-fast.`;
+Be ultra-fast.
+PHONETIC CORRECTION RULE: If the transcription looks like nonsense (e.g., "belly drums"), interpret it phonetically based on common interview topics (e.g., "palindrome"). Use the "USER CONTEXT" to guide your correction.`;
   }
 
   isQuestion(text) {

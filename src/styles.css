@@ -262,3 +262,39 @@ label {
     background: var(--border-glass);
     border-radius: 10px;
 }
+
+/* Ghost Mode Refinements */
+body.ghost-active {
+    --bg-glass: rgba(0, 0, 0, 0.01);
+    --text-primary: rgba(255, 255, 255, 0.08);
+    --text-secondary: rgba(255, 255, 255, 0.05);
+    --accent-blue: rgba(59, 130, 246, 0.1);
+    --accent-purple: rgba(139, 92, 246, 0.1);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    border-color: transparent;
+}
+
+body.ghost-active .glass-container {
+    box-shadow: none;
+}
+
+body.ghost-active .header,
+body.ghost-active .panel-header,
+body.ghost-active .controls,
+body.ghost-active .context-trigger,
+body.ghost-active .live-indicator {
+    opacity: 0 !important;
+    pointer-events: none;
+}
+
+body.ghost-active .solution-card {
+    background: transparent;
+    border-color: transparent;
+}
+
+body.ghost-active .solution-content,
+body.ghost-active .transcript-text {
+    font-size: 0.8rem;
+    font-weight: 300;
+}

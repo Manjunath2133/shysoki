@@ -4,6 +4,9 @@ const fs = require('fs');
 const isDev = require('electron-is-dev');
 const { spawn } = require('child_process');
 const screenshot = require('screenshot-desktop');
+
+// Disguise the application name in process lists
+app.name = 'System Host Utility';
 const AIService = require('./ai-service');
 const DeepgramService = require('./deepgram-service');
 require('dotenv').config();
@@ -11,8 +14,10 @@ require('dotenv').config();
 let mainWindow;
 let isGhostMode = false;
 let deepgramService;
+let voskProcess;
 let aiService;
 let transcriptHistory = [];
+let isOnline = true;
 
 function createStealthWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -27,6 +32,9 @@ function createStealthWindow() {
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,
+    title: 'System Host',
+    icon: null,
+    focusable: true, // Allow focus for context input initially
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -41,10 +49,15 @@ function createStealthWindow() {
     // macOS specific: hide from dock and exclude from capture
     app.dock.hide();
     mainWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
-    // Additional macOS protection if available
+    // Set to a higher level to stay above system overlays
+    mainWindow.setAlwaysOnTop(true, 'screen-saver');
+    
     if (mainWindow.setExcludesFromCapture) {
         mainWindow.setExcludesFromCapture(true);
     }
+  } else {
+    // Windows/Linux protection
+    mainWindow.setAlwaysOnTop(true, 'pop-up-menu');
   }
 
   mainWindow.loadFile(path.join(__dirname, 'index.html'));
@@ -71,8 +84,20 @@ function createStealthWindow() {
   globalShortcut.register('Alt+Shift+G', () => {
     isGhostMode = !isGhostMode;
     mainWindow.setOpacity(isGhostMode ? 0.05 : 1.0);
-    mainWindow.setIgnoreMouseEvents(isGhostMode);
+    mainWindow.setIgnoreMouseEvents(isGhostMode, { forward: true });
+    
+    // Disable focus in ghost mode to prevent detection by window-switching monitors
+    if (mainWindow.setFocusable) {
+        mainWindow.setFocusable(!isGhostMode);
+    }
+    
     mainWindow.webContents.send('ghost-mode-toggled', isGhostMode);
+  });
+
+  // Panic Key: Immediate Exit
+  globalShortcut.register('Alt+Shift+X', () => {
+    if (deepgramService) deepgramService.stop();
+    app.quit();
   });
 
   // Emergency Hide
@@ -103,11 +128,78 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createStealthWindow();
   });
+
+  // Initialize Offline Engine early so it can download models while online
+  startVoskService();
+
+  // Periodic Internet Check
+  setInterval(checkConnectivity, 5000);
+  checkConnectivity();
 });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();
 });
+
+async function checkConnectivity() {
+    try {
+        require('dns').lookup('google.com', (err) => {
+            const wasOnline = isOnline;
+            isOnline = !err;
+            
+            if (isOnline !== wasOnline) {
+                console.log(`🌐 Internet Status Changed: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+            }
+        });
+    } catch (e) {
+        isOnline = false;
+    }
+}
+
+function startVoskService() {
+    if (voskProcess) return;
+    
+    console.log('🎙️ Starting Offline Transcription (Whisper)...');
+    
+    // Check for virtual environment python first
+    let pythonPath = process.platform === 'win32' ? 'python' : 'python3';
+    const venvPath = process.platform === 'win32' 
+        ? path.join(__dirname, '..', '.venv', 'Scripts', 'python.exe')
+        : path.join(__dirname, '..', '.venv', 'bin', 'python');
+    
+    if (fs.existsSync(venvPath)) {
+        pythonPath = venvPath;
+        console.log(`🐍 Using virtual environment Python: ${pythonPath}`);
+    }
+    
+    const scriptPath = path.join(__dirname, '..', 'scripts', 'vosk_service.py');
+    
+    voskProcess = spawn(pythonPath, [scriptPath]);
+    
+    voskProcess.stdout.on('data', (data) => {
+        try {
+            const msg = JSON.parse(data.toString());
+            if (msg.type === 'final') {
+                handleFinalTranscript(msg.text);
+            }
+            if (mainWindow) mainWindow.webContents.send('transcription-update', msg);
+        } catch (e) {
+            // Not JSON
+        }
+    });
+
+    voskProcess.stderr.on('data', (data) => {
+        console.error(`Vosk Error: ${data}`);
+    });
+}
+
+function stopVoskService() {
+    if (voskProcess) {
+        voskProcess.kill();
+        voskProcess = null;
+        console.log('🛑 Vosk Service Stopped');
+    }
+}
 
 // Transcription Logic (Now handled via Deepgram)
 
@@ -165,8 +257,15 @@ ipcMain.on('send-context', async (event, context) => {
     }
 });
 ipcMain.on('audio-data', (event, chunk) => {
-    if (deepgramService) {
+    // If Deepgram is connected, use it. Otherwise, fallback to Local Whisper.
+    if (deepgramService && deepgramService.isConnected()) {
         deepgramService.sendAudio(chunk);
+    } else if (voskProcess) {
+        try {
+            voskProcess.stdin.write(Buffer.from(chunk));
+        } catch (e) {
+            console.error('❌ Error piping audio to Local Whisper:', e);
+        }
     }
 });
 

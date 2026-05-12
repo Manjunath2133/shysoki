@@ -43,9 +43,11 @@ saveContextBtn.onclick = () => {
 };
 
 window.electronAPI.onGhostModeToggled((isGhost) => {
-    document.body.style.opacity = isGhost ? '0.05' : '1';
     if (isGhost) {
+        document.body.classList.add('ghost-active');
         contextModal.classList.remove('active');
+    } else {
+        document.body.classList.remove('ghost-active');
     }
 });
 

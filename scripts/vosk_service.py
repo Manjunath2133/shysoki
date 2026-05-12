@@ -1,50 +1,49 @@
 import os
 import sys
 import json
-import queue
-import sounddevice as sd
-from vosk import Model, KaldiRecognizer
+import numpy as np
+from faster_whisper import WhisperModel
+import io
 
 # Configuration
-MODEL_PATH = "model"  # Small model for speed
+# 'small' is the sweet spot for laptops. Fast and accurate.
+MODEL_SIZE = "small"
 SAMPLE_RATE = 16000
 
-# Queue for audio data
-q = queue.Queue()
-
-def callback(indata, frames, time, status):
-    if status:
-        print(status, file=sys.stderr)
-    q.put(bytes(indata))
-
 def main():
-    if not os.path.exists(MODEL_PATH):
-        print(json.dumps({"type": "error", "message": f"Model not found at {MODEL_PATH}"}))
-        return
-
     try:
-        model = Model(MODEL_PATH)
-        rec = KaldiRecognizer(model, SAMPLE_RATE)
+        # Initialize Whisper Model
+        model = WhisperModel(MODEL_SIZE, device="cpu", compute_type="int8")
         
-        print(json.dumps({"type": "status", "message": "Vosk initialized successfully"}))
+        print(json.dumps({"type": "status", "message": f"Whisper {MODEL_SIZE} initialized successfully"}))
         sys.stdout.flush()
 
-        # Smaller blocksize for more frequent updates
-        with sd.RawInputStream(samplerate=SAMPLE_RATE, blocksize=4000, dtype='int16',
-                               channels=1, callback=callback):
-            while True:
-                data = q.get()
-                if rec.AcceptWaveform(data):
-                    result = json.loads(rec.Result())
-                    if result.get("text"):
-                        print(json.dumps({"type": "final", "text": result["text"]}))
-                        sys.stdout.flush()
-                        # Reset for clean slate after each sentence
-                        rec.Reset()
-                else:
-                    partial = json.loads(rec.PartialResult())
-                    if partial.get("partial"):
-                        print(json.dumps({"type": "partial", "text": partial["partial"]}))
+        audio_accumulator = []
+        
+        # Read from stdin buffer
+        while True:
+            # Read small chunks to avoid blocking
+            data = sys.stdin.buffer.read(4000)
+            if not data:
+                break
+            
+            # Convert bytes to numpy float32 array
+            audio_int16 = np.frombuffer(data, dtype=np.int16)
+            audio_float32 = audio_int16.astype(np.float32) / 32768.0
+            audio_accumulator.extend(audio_float32)
+
+            # Transcribe when we have at least 1.5 seconds of new audio for better context
+            if len(audio_accumulator) >= 24000:
+                current_audio = np.array(audio_accumulator)
+                # Keep a small overlap (0.5s)
+                audio_accumulator = audio_accumulator[16000:] 
+                
+                # Beam size 1 is much faster
+                segments, info = model.transcribe(current_audio, beam_size=1, vad_filter=True)
+                
+                for segment in segments:
+                    if segment.text.strip():
+                        print(json.dumps({"type": "final", "text": segment.text.strip()}))
                         sys.stdout.flush()
 
     except Exception as e:

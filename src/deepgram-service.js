@@ -64,14 +64,17 @@ class DeepgramService {
     }
   }
 
+  isConnected() {
+    return this.connection && this.connection.getReadyState() === 1;
+  }
+
   async sendAudio(chunk) {
     if (!this.connection) {
-        console.log('🔄 Reconnecting to Deepgram...');
-        await this.start();
-        // Give it a tiny bit of time to open or just try sending
+        // Only try to reconnect if we haven't just failed
+        this.start();
     }
     
-    if (this.connection && this.connection.getReadyState() === 1) {
+    if (this.isConnected()) {
       this.connection.send(chunk);
     }
   }
