@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>invisibleAI | Pilot</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="glass-container">
+        <header class="header">
+            <div class="logo">invisibleAI</div>
+            <div class="status-indicators" style="display: flex; gap: 15px; font-size: 0.7rem; font-weight: 600; color: var(--text-secondary);">
+                <div id="status-audio" style="display: flex; align-items: center; gap: 5px;">
+                    <span class="live-indicator"></span> AUDIO ACTIVE
+                </div>
+                <div id="status-stealth" style="display: flex; align-items: center; gap: 5px; color: var(--success);">
+                    ● STEALTH ENABLED
+                </div>
+            </div>
+            <div class="controls">
+            <button id="toggle-transcription" class="btn btn-primary">
+                <span class="icon">🟢</span> <span id="toggle-text">Listening</span>
+            </button>
+            <button id="clear-transcript" class="btn btn-secondary">Clear</button>
+            <button id="btn-ghost" class="btn btn-ghost">Ghost Mode: OFF</button>
+            <div class="control-btn btn-min" id="min-btn"></div>
+            <div class="control-btn btn-close" id="close-btn"></div>
+        </div>
+        </header>
+
+        <main class="main-content">
+            <!-- Transcription Section -->
+            <section class="transcript-panel">
+                <div class="panel-header">
+                    <span>Live Transcript</span>
+                    <span style="font-size: 0.7rem; color: var(--accent-purple);">Alt+Shift+G for Ghost</span>
+                </div>
+                <div class="transcript-scroll" id="transcript-container">
+                    <div class="transcript-text">Waiting for audio stream...</div>
+                </div>
+            </section>
+
+            <!-- AI Solution Section -->
+            <section class="ai-panel">
+                <div class="panel-header">
+                    <span>AI Pilot Solutions</span>
+                    <span id="thinking-indicator" style="display: none; color: var(--accent-blue);">Thinking...</span>
+                </div>
+                <div class="solutions-scroll" id="solutions-container">
+                    <!-- Initial State -->
+                    <div class="solution-card">
+                        <div class="solution-title">Welcome, Pilot.</div>
+                        <div class="solution-content">
+                            Connect your audio to start receiving real-time insights. Use the floating button below to add your Resume and Job Description for tailored answers.
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Context Modal -->
+        <div class="context-modal" id="context-modal">
+            <h2 style="margin-bottom: 20px; font-size: 1.2rem;">Interview Context</h2>
+            <label>Paste Resume / Background</label>
+            <textarea id="resume-input" rows="8" placeholder="Enter your key skills, experience, and achievements..."></textarea>
+            
+            <label>Paste Job Description</label>
+            <textarea id="jd-input" rows="8" placeholder="Enter the job responsibilities and requirements..."></textarea>
+            
+            <button id="save-context" style="background: var(--accent-blue); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: auto;">Save Context</button>
+        </div>
+
+        <!-- Floating Context Trigger -->
+        <div class="context-trigger" id="context-trigger">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>

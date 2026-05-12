@@ -1,0 +1,23 @@
+{
+  "name": "invisibleai",
+  "version": "1.0.0",
+  "description": "Stealth AI Interview Pilot",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron ."
+  },
+  "dependencies": {
+    "@deepgram/sdk": "^3.13.0",
+    "@google/generative-ai": "^0.21.0",
+    "dotenv": "^16.4.5",
+    "electron-is-dev": "^2.0.0",
+    "groq-sdk": "^1.1.2",
+    "openai": "^6.35.0",
+    "screenshot-desktop": "^1.12.7",
+    "tesseract.js": "^7.0.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0"
+  }
+}
