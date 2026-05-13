@@ -9,7 +9,7 @@ class AIService {
     this.currentIndices = { openai: 0, gemini: 0, groq: 0, local: 0 };
     this.providerCooldowns = { openai: 0, gemini: 0, groq: 0 };
     this.history = [];
-    
+
     this._initializeClients();
   }
 
@@ -34,7 +34,7 @@ class AIService {
   async generateSolution(transcriptHistory, context, screenshotBase64 = null) {
     const transcript = transcriptHistory.join('\n');
     const lastQuestion = transcriptHistory[transcriptHistory.length - 1] || '';
-    
+
     let ocrText = null;
     if (screenshotBase64) {
       console.log('🔍 Processing OCR Fallback...');
@@ -51,7 +51,7 @@ class AIService {
     }
 
     const prompt = this._buildPrompt(transcript, lastQuestion, context, screenshotBase64, ocrText);
-    
+
     const providers = ['openai', 'gemini', 'groq', 'local'];
 
     for (const providerName of providers) {
@@ -73,7 +73,7 @@ class AIService {
         try {
           console.log(`🚀 Attempting with ${providerName} (Key #${currentIndex + 1})...`);
           const response = await this._callProvider(providerName, client, prompt, screenshotBase64);
-          
+
           this.currentIndices[providerName] = currentIndex;
           console.log(`✅ Success with ${providerName}`);
           allKeysFailed = false;
@@ -81,16 +81,16 @@ class AIService {
         } catch (error) {
           const errMsg = error.message || String(error);
           console.error(`❌ ${providerName} Key #${currentIndex + 1} failed:`, errMsg);
-          
+
           if (providerName === 'local') {
-             console.error('🛠️ Local Provider Error Details:', error);
+            console.error('🛠️ Local Provider Error Details:', error);
           }
-          
+
           if (errMsg.includes('429') || errMsg.includes('quota') || errMsg.includes('Too Many Requests')) {
-             console.log(`🔄 Quota exceeded for ${providerName} Key #${currentIndex + 1}, rotating...`);
-             continue; 
+            console.log(`🔄 Quota exceeded for ${providerName} Key #${currentIndex + 1}, rotating...`);
+            continue;
           }
-          
+
           if (errMsg.includes('401') || errMsg.includes('API key not valid') || errMsg.includes('Invalid API Key')) {
             console.log(`⚠️ Invalid Key detected for ${providerName} Key #${currentIndex + 1}, trying next...`);
             continue;
@@ -142,20 +142,20 @@ class AIService {
 
   async _callOpenAI(client, prompt, screenshotBase64, isLocal = false) {
     if (isLocal) {
-        const axios = require('axios');
-        console.log('🔗 Calling Ollama via Axios (Direct Local)...');
-        try {
-            const response = await axios.post('http://127.0.0.1:11434/api/chat', {
-                model: 'llama3',
-                messages: [{ role: 'user', content: prompt }],
-                stream: false
-            }, { timeout: 30000 });
-            
-            return response.data.message.content;
-        } catch (e) {
-            console.error('❌ Ollama Direct Call Failed:', e.message);
-            throw e;
-        }
+      const axios = require('axios');
+      console.log('🔗 Calling Ollama via Axios (Direct Local)...');
+      try {
+        const response = await axios.post('http://127.0.0.1:11434/api/chat', {
+          model: 'llama3',
+          messages: [{ role: 'user', content: prompt }],
+          stream: false
+        }, { timeout: 30000 });
+
+        return response.data.message.content;
+      } catch (e) {
+        console.error('❌ Ollama Direct Call Failed:', e.message);
+        throw e;
+      }
     }
 
     const messages = [
@@ -181,12 +181,28 @@ class AIService {
 
   _buildPrompt(transcript, lastQuestion, context, screenshotBase64, ocrText) {
     let mode = screenshotBase64 ? 'MULTIMODAL ANALYSIS' : 'CONVERSATIONAL ANALYSIS';
+    const isExamMode = context.mode === 'mcq';
+
     return `
 You are invisibleAI, an elite Interview Pilot. 
 
 MODE: ${mode}
+${isExamMode ? 'EXAM MODE: ACTIVE (Direct answers only)' : 'INTERVIEW MODE: ACTIVE (Detailed strategy)'}
 
 CRITICAL RULE: Focus ONLY on answering the "CURRENT TARGET QUESTION" or solving the "SCREENSHOT PROBLEM" below.
+
+${isExamMode ? `
+EXAM MODE RULES:
+1. If the question is an MCQ, provide ONLY the correct option and a very brief reason (e.g., "Answer: C").
+2. If the question is a coding problem, provide ONLY the full code solution. 
+3. DO NOT provide lengthy explanations, strategy talking points, or introductions.
+4. Be as concise as possible.
+` : `
+INTERVIEW MODE RULES:
+1. Solve the problem IMMEDIATELY with the MOST OPTIMIZED code.
+2. Provide strategy and talking points for the candidate to use.
+3. Explain the logic in 3-4 quick bullet points.
+`}
 
 ${screenshotBase64 ? `
 SCREENSHOT ANALYSIS:
@@ -204,16 +220,10 @@ ${transcript}
 CURRENT TARGET QUESTION:
 "${lastQuestion}"
 
-GOALS:
-1. If a screenshot is provided, solve the coding problem IMMEDIATELY.
-2. Provide the MOST OPTIMIZED code (time/space complexity).
-3. Explain the logic in 3-4 quick bullet points.
-4. If no screenshot, answer the target question precisely.
-
 OUTPUT FORMAT:
 - Title: Problem Name / Question Title.
-- Content: Strategy and talking points.
-- Code: Full solution.
+- Content: ${isExamMode ? 'Direct Answer / Brief logic.' : 'Strategy and talking points.'}
+- Code: Full solution (if applicable).
 
 Be ultra-fast.
 PHONETIC CORRECTION RULE: If the transcription looks like nonsense (e.g., "belly drums"), interpret it phonetically based on common interview topics (e.g., "palindrome"). Use the "USER CONTEXT" to guide your correction.`;

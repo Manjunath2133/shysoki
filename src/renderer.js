@@ -12,12 +12,14 @@ const thinkingIndicator = document.getElementById('thinking-indicator');
 const toggleTranscriptionBtn = document.getElementById('toggle-transcription');
 const toggleText = document.getElementById('toggle-text');
 const toggleIcon = toggleTranscriptionBtn.querySelector('.icon');
+const btnMode = document.getElementById('btn-mode');
 
 // Application State
 let isTranscriptionActive = true;
 let context = {
     resume: localStorage.getItem('invisible_resume') || '',
-    jd: localStorage.getItem('invisible_jd') || ''
+    jd: localStorage.getItem('invisible_jd') || '',
+    mode: localStorage.getItem('invisible_mode') || 'interview'
 };
 
 // Initialize Inputs
@@ -31,6 +33,27 @@ minBtn.onclick = () => window.electronAPI.minimizeApp();
 contextTrigger.onclick = () => {
     contextModal.classList.toggle('active');
 };
+
+function updateModeUI() {
+    if (context.mode === 'mcq') {
+        btnMode.innerText = 'Mode: MCQ/Exam';
+        btnMode.classList.add('exam-mode');
+    } else {
+        btnMode.innerText = 'Mode: Interview';
+        btnMode.classList.remove('exam-mode');
+    }
+}
+
+btnMode.onclick = () => {
+    context.mode = context.mode === 'interview' ? 'mcq' : 'interview';
+    localStorage.setItem('invisible_mode', context.mode);
+    updateModeUI();
+    window.electronAPI.sendContext(context);
+    addTranscriptLine(`System: Mode switched to ${context.mode === 'mcq' ? 'MCQ/Exam' : 'Interview'}.`, true);
+};
+
+// Initialize Mode UI
+updateModeUI();
 
 saveContextBtn.onclick = () => {
     context.resume = resumeInput.value;

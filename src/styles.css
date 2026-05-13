@@ -83,6 +83,54 @@ body {
 .btn-close { background: #ff5f56; }
 .btn-min { background: #ffbd2e; }
 
+.btn {
+    padding: 6px 14px;
+    border-radius: 8px;
+    border: 1px solid var(--border-glass);
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    -webkit-app-region: no-drag;
+}
+
+.btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateY(-1px);
+}
+
+.btn-primary {
+    background: var(--accent-blue);
+    border-color: transparent;
+}
+
+.btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.btn-ghost {
+    background: rgba(139, 92, 246, 0.1);
+    border-color: var(--accent-purple);
+    color: var(--accent-purple);
+}
+
+.btn-mode {
+    background: rgba(59, 130, 246, 0.1);
+    border-color: var(--accent-blue);
+    color: var(--accent-blue);
+}
+
+.btn-mode.exam-mode {
+    background: rgba(245, 158, 11, 0.1);
+    border-color: var(--warning);
+    color: var(--warning);
+}
+
 /* Main Content */
 .main-content {
     flex: 1;

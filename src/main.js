@@ -18,6 +18,7 @@ let voskProcess;
 let aiService;
 let transcriptHistory = [];
 let isOnline = true;
+let currentContext = { mode: 'interview' }; // Default context
 
 function createStealthWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -218,7 +219,7 @@ async function handleFinalTranscript(text) {
   }
 }
 
-async function analyzeScreen(context = {}) {
+async function analyzeScreen() {
   try {
     console.log('📸 Analyzing Screen...');
     mainWindow.webContents.send('ai-status', 'thinking');
@@ -234,7 +235,7 @@ async function analyzeScreen(context = {}) {
     const base64Img = imgBuffer.toString('base64');
     
     console.log('🚀 Sending to AI Pilot (Multimodal)...');
-    const response = await aiService.generateSolution(transcriptHistory, context, base64Img);
+    const response = await aiService.generateSolution(transcriptHistory, currentContext, base64Img);
     console.log(`✅ ${response.provider} Response Received`);
     mainWindow.webContents.send('ai-solution', response.text);
   } catch (error) {
@@ -246,6 +247,12 @@ async function analyzeScreen(context = {}) {
 // IPC Handlers
 ipcMain.handle('get-env', (event, key) => process.env[key]);
 ipcMain.on('send-context', async (event, context) => {
+    currentContext = context;
+    console.log('🚀 Context Updated:', context.mode);
+    
+    // If this came from a 'request-context' trigger, we should continue to AI
+    // We can detect this by checking if it's a full context update or just a mode switch
+    // Actually, the original code always triggered AI solution on send-context
     console.log('🚀 Sending to AI Pilot (Text-only)...');
     try {
         const response = await aiService.generateSolution(transcriptHistory, context);
