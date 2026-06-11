@@ -159,15 +159,17 @@ app.post('/api/license/status', authenticateToken, async (req, res) => {
         }
 
         // 1. Device Lock Enforcer
-        if (!license.device_id) {
-            // First time login, bind to this machine
-            await db.run('UPDATE licenses SET device_id = ? WHERE user_id = ?', [deviceId, req.user.id]);
-            license.device_id = deviceId;
-        } else if (license.device_id !== deviceId) {
-            // Check if device fingerprint matches. If not, block concurrent usage
-            return res.status(403).json({ 
-                error: 'Session locked to another machine. Please log out on your other device first.' 
-            });
+        if (deviceId !== 'web_dashboard') {
+            if (!license.device_id) {
+                // First time login, bind to this machine
+                await db.run('UPDATE licenses SET device_id = ? WHERE user_id = ?', [deviceId, req.user.id]);
+                license.device_id = deviceId;
+            } else if (license.device_id !== deviceId) {
+                // Check if device fingerprint matches. If not, block concurrent usage
+                return res.status(403).json({ 
+                    error: 'Session locked to another machine. Please log out on your other device first.' 
+                });
+            }
         }
 
         // 2. Expiration Verification
