@@ -2,7 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const Razorpay = require('razorpay');
+const Stripe = require('stripe');
 const crypto = require('crypto');
 require('dotenv').config();
 
@@ -15,20 +15,17 @@ app.use(express.json());
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback_secret_for_shyoski';
 
-// Initialize Razorpay if keys are available
-let razorpay = null;
-if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+// Initialize Stripe if keys are available
+let stripe = null;
+if (process.env.STRIPE_SECRET_KEY) {
     try {
-        razorpay = new Razorpay({
-            key_id: process.env.RAZORPAY_KEY_ID,
-            key_secret: process.env.RAZORPAY_KEY_SECRET
-        });
-        console.log('💳 Razorpay Gateway Initialized');
+        stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+        console.log('💳 Stripe Gateway Initialized');
     } catch (e) {
-        console.error('❌ Failed to initialize Razorpay:', e.message);
+        console.error('❌ Failed to initialize Stripe:', e.message);
     }
 } else {
-    console.log('⚠️ Razorpay credentials not found. Running in Payment SIMULATION mode.');
+    console.log('⚠️ Stripe credentials not found. Running in Payment SIMULATION mode.');
 }
 
 // Plan Pricing Configuration (in Rupees)
@@ -264,7 +261,7 @@ app.post('/api/license/sync-usage', authenticateToken, async (req, res) => {
     }
 });
 
-// 4. Create Billing Order
+// 4. Create Billing Order (Stripe Checkout Session)
 app.post('/api/payments/create-order', authenticateToken, async (req, res) => {
     const { plan } = req.body;
 
@@ -273,28 +270,43 @@ app.post('/api/payments/create-order', authenticateToken, async (req, res) => {
     }
 
     const planConfig = PLANS[plan];
-    const receiptId = `receipt_u${req.user.id}_t${Date.now()}`;
-    const amountInPaise = planConfig.price * 100; // Razorpay accepts amount in paise (1 INR = 100 Paise)
+    const amountInPaise = planConfig.price * 100;
 
     try {
-        if (razorpay) {
-            // Real Razorpay Order Creation
-            const order = await razorpay.orders.create({
-                amount: amountInPaise,
-                currency: 'INR',
-                receipt: receiptId
+        if (stripe) {
+            // Real Stripe Checkout Session Creation
+            const session = await stripe.checkout.sessions.create({
+                payment_method_types: ['card'],
+                line_items: [{
+                    price_data: {
+                        currency: 'inr',
+                        product_data: {
+                            name: planConfig.name,
+                            description: `Unlock Shyoski access credits`,
+                        },
+                        unit_amount: amountInPaise,
+                    },
+                    quantity: 1,
+                }],
+                mode: 'payment',
+                success_url: `${process.env.BACKEND_URL || 'https://shysoki-api.onrender.com'}/api/payments/stripe-success?session_id={CHECKOUT_SESSION_ID}`,
+                cancel_url: `${process.env.BACKEND_URL || 'https://shysoki-api.onrender.com'}/api/payments/stripe-cancel`,
+                metadata: {
+                    userId: req.user.id.toString(),
+                    plan: plan
+                }
             });
 
             await db.run(
                 'INSERT INTO transactions (user_id, order_id, amount, plan, status) VALUES (?, ?, ?, ?, ?)',
-                [req.user.id, order.id, amountInPaise, plan, 'pending']
+                [req.user.id, session.id, amountInPaise, plan, 'pending']
             );
 
             return res.status(201).json({
-                order_id: order.id,
-                amount: order.amount,
-                currency: order.currency,
-                key_id: process.env.RAZORPAY_KEY_ID,
+                checkout_url: session.url,
+                order_id: session.id,
+                amount: amountInPaise,
+                currency: 'INR',
                 simulated: false
             });
         } else {
@@ -314,14 +326,14 @@ app.post('/api/payments/create-order', authenticateToken, async (req, res) => {
             });
         }
     } catch (e) {
-        console.error('Order Creation Error:', e);
+        console.error('Stripe Session Creation Error:', e);
         res.status(500).json({ error: 'Payment gateway connection error' });
     }
 });
 
-// 5. Verify Payment & Grant License Credits
+// 5. Verify Payment & Grant License Credits (Stripe Status Sync)
 app.post('/api/payments/verify', authenticateToken, async (req, res) => {
-    const { orderId, paymentId, signature } = req.body;
+    const { orderId } = req.body; // orderId is either Stripe Session ID or mock ID
 
     if (!orderId) {
         return res.status(400).json({ error: 'orderId is required' });
@@ -334,7 +346,17 @@ app.post('/api/payments/verify', authenticateToken, async (req, res) => {
         }
 
         if (tx.status === 'completed') {
-            return res.json({ success: true, message: 'Payment already completed previously.' });
+            const updatedLicense = await db.get('SELECT * FROM licenses WHERE user_id = ?', [req.user.id]);
+            return res.json({
+                success: true,
+                license: {
+                    status: updatedLicense.status,
+                    type: updatedLicense.type,
+                    free_queries_left: updatedLicense.free_queries_left,
+                    paid_minutes_left: updatedLicense.paid_minutes_left,
+                    expires_at: updatedLicense.expires_at
+                }
+            });
         }
 
         const plan = tx.plan;
@@ -342,25 +364,18 @@ app.post('/api/payments/verify', authenticateToken, async (req, res) => {
 
         let isValid = false;
 
-        // A. Verify with real Razorpay Signature
-        if (razorpay && paymentId && signature) {
-            const secret = process.env.RAZORPAY_KEY_SECRET;
-            const hmac = crypto.createHmac('sha256', secret);
-            hmac.update(orderId + "|" + paymentId);
-            const generatedSignature = hmac.digest('hex');
-
-            if (generatedSignature === signature) {
+        if (stripe && !orderId.startsWith('order_mock_')) {
+            // Check real Stripe checkout session status
+            const session = await stripe.checkout.sessions.retrieve(orderId);
+            if (session.payment_status === 'paid') {
                 isValid = true;
             }
-        } 
-        // B. Verify Mock Sandbox Transaction
-        else if (orderId.startsWith('order_mock_')) {
+        } else if (orderId.startsWith('order_mock_')) {
             isValid = true;
         }
 
         if (!isValid) {
-            await db.run("UPDATE transactions SET status = 'failed' WHERE order_id = ?", [orderId]);
-            return res.status(400).json({ error: 'Payment signature validation failed' });
+            return res.status(400).json({ error: 'Payment not completed or verification failed' });
         }
 
         // Process License Activation in Transaction Block
@@ -368,15 +383,14 @@ app.post('/api/payments/verify', authenticateToken, async (req, res) => {
             // Mark transaction completed
             await db.run(
                 "UPDATE transactions SET status = 'completed', payment_id = ? WHERE order_id = ?",
-                [paymentId || 'simulated', orderId]
+                [orderId.startsWith('order_mock_') ? 'simulated' : 'stripe_session', orderId]
             );
 
-            // Fetch current license status to stack duration if applicable
+            // Fetch current license status to stack duration
             const currentLicense = await db.get('SELECT * FROM licenses WHERE user_id = ?', [req.user.id]);
             const now = Date.now();
 
             if (plan === 'hourly') {
-                // Add hours
                 const currentMins = currentLicense.type === 'hourly' ? currentLicense.paid_minutes_left : 0;
                 await db.run(
                     `UPDATE licenses 
@@ -385,10 +399,8 @@ app.post('/api/payments/verify', authenticateToken, async (req, res) => {
                     [currentMins + planConfig.value, req.user.id]
                 );
             } else {
-                // Duration Plan (daily, monthly, yearly, etc.)
                 let baseTime = now;
                 if (currentLicense.status === 'active' && currentLicense.expires_at && currentLicense.type === plan) {
-                    // Stacking: If same plan is already active, extend from current expiration
                     const currentExpiry = new Date(currentLicense.expires_at).getTime();
                     if (currentExpiry > now) {
                         baseTime = currentExpiry;
@@ -423,6 +435,53 @@ app.post('/api/payments/verify', authenticateToken, async (req, res) => {
         console.error('Payment Verification Error:', e);
         res.status(500).json({ error: 'Server error processing payment completion' });
     }
+});
+
+// HTML Checkout Redirect endpoints
+app.get('/api/payments/stripe-success', (req, res) => {
+    res.send(`
+        <html>
+            <head>
+                <title>Payment Successful</title>
+                <style>
+                    body { font-family: -apple-system, sans-serif; text-align: center; padding: 50px; background: #0f172a; color: white; }
+                    .card { background: #1e293b; display: inline-block; padding: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-top: 10vh; }
+                    h1 { color: #10b981; margin-bottom: 20px; }
+                    p { color: #94a3b8; line-height: 1.6; }
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h1>✓ Payment Successful</h1>
+                    <p>Thank you for your purchase! Your Shyoski app credits will update automatically in a few seconds.</p>
+                    <p>You can close this tab and return to the Shyoski app window.</p>
+                </div>
+            </body>
+        </html>
+    `);
+});
+
+app.get('/api/payments/stripe-cancel', (req, res) => {
+    res.send(`
+        <html>
+            <head>
+                <title>Payment Cancelled</title>
+                <style>
+                    body { font-family: -apple-system, sans-serif; text-align: center; padding: 50px; background: #0f172a; color: white; }
+                    .card { background: #1e293b; display: inline-block; padding: 40px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-top: 10vh; }
+                    h1 { color: #f59e0b; margin-bottom: 20px; }
+                    p { color: #94a3b8; line-height: 1.6; }
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <h1>Payment Cancelled</h1>
+                    <p>The checkout session was cancelled. No charges were made.</p>
+                    <p>You can close this tab and try again inside the Shyoski app.</p>
+                </div>
+            </body>
+        </html>
+    `);
 });
 
 // 6. Secure AI Resolution Proxy (Enforces access control)

@@ -593,13 +593,12 @@ ipcMain.handle('billing:purchase-plan', async (event, plan) => {
             headers: { 'Authorization': `Bearer ${token}` }
         });
         
-        const { order_id, amount, currency, simulated } = orderRes.data;
+        const { checkout_url, order_id, amount, currency, simulated } = orderRes.data;
         
         if (simulated) {
             console.log('💸 Processing Simulated Payment:', order_id);
             const verifyRes = await axios.post(`${BACKEND_URL}/api/payments/verify`, {
-                orderId: order_id,
-                paymentId: `pay_mock_${crypto.randomBytes(6).toString('hex')}`
+                orderId: order_id
             }, {
                 headers: { 'Authorization': `Bearer ${token}` }
             });
@@ -608,7 +607,9 @@ ipcMain.handle('billing:purchase-plan', async (event, plan) => {
             if (mainWindow) mainWindow.webContents.send('billing:state-updated', currentBillingState);
             return { success: true, license: currentBillingState, simulated: true };
         } else {
-            return { success: true, order_id, amount, currency, simulated: false };
+            const { shell } = require('electron');
+            shell.openExternal(checkout_url);
+            return { success: true, order_id, simulated: false };
         }
     } catch (e) {
         console.error('Purchase Plan Error:', e.message);
