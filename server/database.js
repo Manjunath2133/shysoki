@@ -1,36 +1,92 @@
 const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const path = require('path');
-const fs = require('fs');
 require('dotenv').config();
 
-const dbPath = path.resolve(__dirname, process.env.DATABASE_PATH || './database.sqlite');
+const isPostgres = !!process.env.DATABASE_URL;
+let pgPool = null;
+let sqliteDb = null;
 
-// Create database file if not exists
-const db = new sqlite3.Database(dbPath, (err) => {
-    if (err) {
-        console.error('❌ Failed to connect to SQLite database:', err.message);
-    } else {
-        console.log('📦 Connected to SQLite database at:', dbPath);
-        initDb();
+if (isPostgres) {
+    console.log('🐘 PostgreSQL Database URL found. Connecting to Postgres...');
+    pgPool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: {
+            rejectUnauthorized: false // Required for Render SSL connection verification bypass
+        }
+    });
+    initPgDb();
+} else {
+    console.log('📦 Connecting to SQLite database...');
+    const dbPath = path.resolve(__dirname, process.env.DATABASE_PATH || './database.sqlite');
+    sqliteDb = new sqlite3.Database(dbPath, (err) => {
+        if (err) {
+            console.error('❌ Failed to connect to SQLite:', err.message);
+        } else {
+            initSqliteDb();
+        }
+    });
+}
+
+// Convert `?` placeholder in SQL queries to `$1`, `$2` format for Postgres
+function formatSql(sql) {
+    if (!isPostgres) return sql;
+    let index = 1;
+    return sql.replace(/\?/g, () => `$${index++}`);
+}
+
+async function initPgDb() {
+    try {
+        await pgPool.query(`CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            password_hash VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+
+        await pgPool.query(`CREATE TABLE IF NOT EXISTS licenses (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER UNIQUE NOT NULL,
+            status VARCHAR(50) DEFAULT 'free_trial',
+            type VARCHAR(50) DEFAULT 'free',
+            free_queries_left INTEGER DEFAULT 5,
+            paid_minutes_left NUMERIC DEFAULT 0,
+            expires_at TIMESTAMP,
+            last_sync_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            device_id VARCHAR(255)
+        )`);
+
+        await pgPool.query(`CREATE TABLE IF NOT EXISTS transactions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            order_id VARCHAR(255) UNIQUE NOT NULL,
+            payment_id VARCHAR(255),
+            amount INTEGER NOT NULL,
+            plan VARCHAR(50) NOT NULL,
+            status VARCHAR(50) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+
+        console.log('✅ PostgreSQL Tables Initialized');
+    } catch (e) {
+        console.error('❌ Failed to initialize Postgres tables:', e.message);
     }
-});
+}
 
-function initDb() {
-    db.serialize(() => {
-        // Users table
-        db.run(`CREATE TABLE IF NOT EXISTS users (
+function initSqliteDb() {
+    sqliteDb.serialize(() => {
+        sqliteDb.run(`CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
 
-        // Licenses table (1-to-1 with user)
-        db.run(`CREATE TABLE IF NOT EXISTS licenses (
+        sqliteDb.run(`CREATE TABLE IF NOT EXISTS licenses (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER UNIQUE NOT NULL,
-            status TEXT DEFAULT 'free_trial', -- 'free_trial', 'active', 'expired'
-            type TEXT DEFAULT 'free',          -- 'free', 'hourly', 'daily', 'monthly', '3_months', '6_months', 'yearly'
+            status TEXT DEFAULT 'free_trial',
+            type TEXT DEFAULT 'free',
             free_queries_left INTEGER DEFAULT 5,
             paid_minutes_left INTEGER DEFAULT 0,
             expires_at DATETIME,
@@ -39,65 +95,99 @@ function initDb() {
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )`);
 
-        // Transactions table
-        db.run(`CREATE TABLE IF NOT EXISTS transactions (
+        sqliteDb.run(`CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
             order_id TEXT UNIQUE NOT NULL,
             payment_id TEXT,
-            amount INTEGER NOT NULL, -- in Paise (e.g., 3000 Rs = 300000 Paise)
+            amount INTEGER NOT NULL,
             plan TEXT NOT NULL,
-            status TEXT DEFAULT 'pending', -- 'pending', 'completed', 'failed'
+            status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
         )`);
 
-        console.log('✅ SQLite Database Tables Initialized');
+        console.log('✅ SQLite Tables Initialized');
     });
 }
 
-// Helper methods wrapped in Promises
 const dbUtils = {
-    get(sql, params = []) {
-        return new Promise((resolve, reject) => {
-            db.get(sql, params, (err, row) => {
-                if (err) reject(err);
-                else resolve(row);
+    async get(sql, params = []) {
+        const formatted = formatSql(sql);
+        if (isPostgres) {
+            const res = await pgPool.query(formatted, params);
+            return res.rows[0] || null;
+        } else {
+            return new Promise((resolve, reject) => {
+                sqliteDb.get(formatted, params, (err, row) => {
+                    if (err) reject(err);
+                    else resolve(row);
+                });
             });
-        });
+        }
     },
-    all(sql, params = []) {
-        return new Promise((resolve, reject) => {
-            db.all(sql, params, (err, rows) => {
-                if (err) reject(err);
-                else resolve(rows);
+    async all(sql, params = []) {
+        const formatted = formatSql(sql);
+        if (isPostgres) {
+            const res = await pgPool.query(formatted, params);
+            return res.rows;
+        } else {
+            return new Promise((resolve, reject) => {
+                sqliteDb.all(formatted, params, (err, rows) => {
+                    if (err) reject(err);
+                    else resolve(rows);
+                });
             });
-        });
+        }
     },
-    run(sql, params = []) {
-        return new Promise((resolve, reject) => {
-            db.run(sql, params, function(err) {
-                if (err) reject(err);
-                else resolve({ id: this.lastID, changes: this.changes });
+    async run(sql, params = []) {
+        let formatted = formatSql(sql);
+        if (isPostgres) {
+            if (formatted.toUpperCase().startsWith('INSERT INTO') && !formatted.toUpperCase().includes('RETURNING')) {
+                formatted += ' RETURNING id';
+            }
+            const res = await pgPool.query(formatted, params);
+            const insertedRow = res.rows[0];
+            return { id: insertedRow ? insertedRow.id : null, changes: res.rowCount };
+        } else {
+            return new Promise((resolve, reject) => {
+                sqliteDb.run(formatted, params, function(err) {
+                    if (err) reject(err);
+                    else resolve({ id: this.lastID, changes: this.changes });
+                });
             });
-        });
+        }
     },
-    // Run transactions manually
-    transaction(fn) {
-        return new Promise((resolve, reject) => {
-            db.serialize(() => {
-                db.run('BEGIN TRANSACTION');
-                fn()
-                    .then((res) => {
-                        db.run('COMMIT');
-                        resolve(res);
-                    })
-                    .catch((err) => {
-                        db.run('ROLLBACK');
-                        reject(err);
-                    });
+    async transaction(fn) {
+        if (isPostgres) {
+            const client = await pgPool.connect();
+            try {
+                await client.query('BEGIN');
+                const res = await fn();
+                await client.query('COMMIT');
+                return res;
+            } catch (err) {
+                await client.query('ROLLBACK');
+                throw err;
+            } finally {
+                client.release();
+            }
+        } else {
+            return new Promise((resolve, reject) => {
+                sqliteDb.serialize(() => {
+                    sqliteDb.run('BEGIN TRANSACTION');
+                    fn()
+                        .then((res) => {
+                            sqliteDb.run('COMMIT');
+                            resolve(res);
+                        })
+                        .catch((err) => {
+                            sqliteDb.run('ROLLBACK');
+                            reject(err);
+                        });
+                });
             });
-        });
+        }
     }
 };
 
