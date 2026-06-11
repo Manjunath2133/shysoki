@@ -52,15 +52,15 @@
             </ul>
 
             <h2>3. Local Cryptographic Cache</h2>
-            <p>To support offline execution checks and billing sync integrity, the application caches a encrypted session token in `billing_config.json`.
-               We leverage local hardware keystores to seal the file contents:</p>
+            <p>To support validation integrity and secure license persistence, the application caches an encrypted session token locally.
+               We leverage secure platform credential layers to seal and isolate the cached contents:</p>
             <ul>
-                <li><strong>macOS:</strong> Encryption keys are sealed inside the secure Apple Keychain system.</li>
-                <li><strong>Windows:</strong> We use the DPAPI (Data Protection API) where keys are tied to the local logged-in Windows user account password.</li>
+                <li><strong>macOS Protection:</strong> Security keys are isolated using the system's native hardware credential storage framework.</li>
+                <li><strong>Windows Protection:</strong> Encryption is sealed using native cryptographic validation interfaces bound strictly to the active system user account context.</li>
             </ul>
 
             <h2>4. Concurrency & Anti-Tampering Checks</h2>
-            <p>To prevent concurrent license bypasses, the server checks unique system attributes (fingerprints consisting of CPU IDs and system serial numbers) hashed with SHA-256. If a timestamp drifting attempt (manipulating the system clock) is registered, the application locks keyboard control in Ghost Mode until synced with the server.</p>
+            <p>To prevent unauthorized license duplication, the licensing service validates encrypted hardware signature tags. If a system clock anomaly or sync tampering attempt is registered, the interface restricts unauthorized app execution immediately until verified by the server.</p>
         </article>
     </main>
 
