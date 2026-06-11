@@ -184,7 +184,7 @@ class AIService {
     const isExamMode = context.mode === 'mcq';
 
     return `
-You are invisibleAI, an elite Interview Pilot. 
+You are Shyoski, an elite Interview Pilot. 
 
 MODE: ${mode}
 ${isExamMode ? 'EXAM MODE: ACTIVE (Direct answers only)' : 'INTERVIEW MODE: ACTIVE (Detailed strategy)'}

@@ -15,7 +15,7 @@ class GeminiService {
 
   async generatePilotSolution(transcript, context, screenshotBase64 = null) {
     const prompt = `
-You are invisibleAI, an elite Interview Pilot. Your goal is to provide real-time, discreet guidance.
+You are Shyoski, an elite Interview Pilot. Your goal is to provide real-time, discreet guidance.
 
 USER CONTEXT:
 Resume: ${context.resume || 'Not provided'}

@@ -12,4 +12,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   onRequestContext: (callback) => ipcRenderer.on('request-context', () => callback()),
   sendContext: (context) => ipcRenderer.send('send-context', context),
   sendAudio: (chunk) => ipcRenderer.send('audio-data', chunk),
+
+  // Commercial Licensing & Authentication
+  login: (credentials) => ipcRenderer.invoke('auth:login', credentials),
+  register: (credentials) => ipcRenderer.invoke('auth:register', credentials),
+  logout: () => ipcRenderer.invoke('auth:logout'),
+  getBillingState: () => ipcRenderer.invoke('billing:get-state'),
+  purchasePlan: (plan) => ipcRenderer.invoke('billing:purchase-plan', plan),
+  onBillingStateUpdated: (callback) => ipcRenderer.on('billing:state-updated', (event, state) => callback(state)),
+  onBillingExpired: (callback) => ipcRenderer.on('billing:expired', (event, reason) => callback(reason))
 });
+

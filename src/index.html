@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>invisibleAI | Pilot</title>
+    <title>Shyoski | Pilot</title>
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
     <div class="glass-container">
         <header class="header">
-            <div class="logo">invisibleAI</div>
+            <div class="logo">Shyoski</div>
             <div class="status-indicators" style="display: flex; gap: 15px; font-size: 0.7rem; font-weight: 600; color: var(--text-secondary);">
                 <div id="status-audio" style="display: flex; align-items: center; gap: 5px;">
                     <span class="live-indicator"></span> AUDIO ACTIVE
@@ -25,6 +25,7 @@
             <button id="clear-transcript" class="btn btn-secondary">Clear</button>
             <button id="btn-mode" class="btn btn-mode">Mode: Interview</button>
             <button id="btn-ghost" class="btn btn-ghost">Ghost Mode: OFF</button>
+            <button id="btn-billing" class="btn btn-billing">💰 Account</button>
             <div class="control-btn btn-min" id="min-btn"></div>
             <div class="control-btn btn-close" id="close-btn"></div>
         </div>
@@ -70,6 +71,100 @@
             <textarea id="jd-input" rows="8" placeholder="Enter the job responsibilities and requirements..."></textarea>
             
             <button id="save-context" style="background: var(--accent-blue); color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: auto;">Save Context</button>
+        </div>
+
+        <!-- Billing Modal -->
+        <div class="billing-modal" id="billing-modal">
+            <div class="billing-header">
+                <h2 style="font-size: 1.2rem; background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Account & Subscription</h2>
+                <div class="billing-close" id="billing-close">&times;</div>
+            </div>
+            
+            <!-- Tab Contents -->
+            <!-- 1. Logged Out State (Auth Form) -->
+            <div id="billing-auth-section" class="billing-tab-content active">
+                <div class="auth-toggle">
+                    <button id="toggle-signin-tab" class="auth-tab-btn active">Sign In</button>
+                    <button id="toggle-signup-tab" class="auth-tab-btn">Sign Up</button>
+                </div>
+                
+                <form id="auth-form" style="display: flex; flex-direction: column; gap: 12px; margin-top: 15px;">
+                    <div class="form-group">
+                        <label for="auth-email">Email Address</label>
+                        <input type="email" id="auth-email" required placeholder="name@domain.com">
+                    </div>
+                    <div class="form-group">
+                        <label for="auth-password">Password</label>
+                        <input type="password" id="auth-password" required placeholder="••••••••">
+                    </div>
+                    <div id="auth-error-msg" class="auth-error" style="display: none;"></div>
+                    <button type="submit" id="auth-submit-btn" class="btn btn-primary" style="justify-content: center; padding: 12px;">Sign In</button>
+                </form>
+            </div>
+            
+            <!-- 2. Logged In State (Dashboard) -->
+            <div id="billing-dashboard-section" class="billing-tab-content">
+                <div class="user-status-card">
+                    <div class="user-info">
+                        <span id="billing-user-email" style="font-weight: 600;">user@domain.com</span>
+                        <button id="btn-logout" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.7rem;">Sign Out</button>
+                    </div>
+                    
+                    <div class="plan-status-display">
+                        <div class="plan-badge" id="plan-badge-display">Free Trial</div>
+                        <div class="plan-details" id="plan-details-display">5 queries left</div>
+                    </div>
+                </div>
+                
+                <h3 style="font-size: 0.9rem; margin: 15px 0 10px 0; color: var(--text-secondary); font-weight: 600;">Upgrade Subscription</h3>
+                
+                <div class="plans-list-container">
+                    <div class="plan-card" data-plan="hourly">
+                        <div class="plan-card-info">
+                            <span class="plan-name">Hourly Plan</span>
+                            <span class="plan-desc">Adds 1 Hour of Listening</span>
+                        </div>
+                        <button class="btn btn-buy" data-plan="hourly">₹30</button>
+                    </div>
+                    <div class="plan-card" data-plan="daily">
+                        <div class="plan-card-info">
+                            <span class="plan-name">1 Day Pass</span>
+                            <span class="plan-desc">24 Hours Unlimited Access</span>
+                        </div>
+                        <button class="btn btn-buy" data-plan="daily">₹100</button>
+                    </div>
+                    <div class="plan-card" data-plan="monthly">
+                        <div class="plan-card-info">
+                            <span class="plan-name">1 Month Pass</span>
+                            <span class="plan-desc">30 Days Unlimited Access</span>
+                        </div>
+                        <button class="btn btn-buy" data-plan="monthly">₹3,000</button>
+                    </div>
+                    <div class="plan-card" data-plan="3_months">
+                        <div class="plan-card-info">
+                            <span class="plan-name">3 Months Pass</span>
+                            <span class="plan-desc">90 Days Unlimited Access</span>
+                        </div>
+                        <button class="btn btn-buy" data-plan="3_months">₹6,000</button>
+                    </div>
+                    <div class="plan-card" data-plan="6_months">
+                        <div class="plan-card-info">
+                            <span class="plan-name">6 Months Pass</span>
+                            <span class="plan-desc">180 Days Unlimited Access</span>
+                        </div>
+                        <button class="btn btn-buy" data-plan="6_months">₹9,000</button>
+                    </div>
+                    <div class="plan-card" data-plan="yearly">
+                        <div class="plan-card-info">
+                            <span class="plan-name">1 Year Pass</span>
+                            <span class="plan-desc">365 Days Unlimited Access</span>
+                        </div>
+                        <button class="btn btn-buy" data-plan="yearly">₹12,000</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div id="billing-status-msg" style="margin-top: 15px; font-size: 0.8rem; text-align: center; color: var(--success); display: none;"></div>
         </div>
 
         <!-- Floating Context Trigger -->

@@ -1,15 +1,19 @@
-const { app, BrowserWindow, ipcMain, globalShortcut, screen } = require('electron');
+const { app, BrowserWindow, ipcMain, globalShortcut, screen, safeStorage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const isDev = require('electron-is-dev');
 const { spawn } = require('child_process');
 const screenshot = require('screenshot-desktop');
+const axios = require('axios');
+const crypto = require('crypto');
 
 // Disguise the application name in process lists
-app.name = 'System Host Utility';
+app.name = 'Shyoski';
 const AIService = require('./ai-service');
 const DeepgramService = require('./deepgram-service');
 require('dotenv').config();
+
+const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
 
 let mainWindow;
 let isGhostMode = false;
@@ -19,6 +23,223 @@ let aiService;
 let transcriptHistory = [];
 let isOnline = true;
 let currentContext = { mode: 'interview' }; // Default context
+
+// Local Config Store (Encrypted Session + Last Sync cache)
+const configPath = path.join(app.getPath('userData'), 'billing_config.json');
+
+function readConfig() {
+  try {
+    if (fs.existsSync(configPath)) {
+      return JSON.parse(fs.readFileSync(configPath, 'utf8'));
+    }
+  } catch (e) {
+    console.error('Failed to read billing config:', e);
+  }
+  return { token: null, email: null, last_sync_time: 0 };
+}
+
+function writeConfig(data) {
+  try {
+    const dir = path.dirname(configPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    fs.writeFileSync(configPath, JSON.stringify(data, null, 2), 'utf8');
+  } catch (e) {
+    console.error('Failed to write billing config:', e);
+  }
+}
+
+function encryptToken(token) {
+  if (!token) return null;
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      return safeStorage.encryptString(token).toString('base64');
+    }
+  } catch (e) {
+    console.error('Token encryption failed:', e);
+  }
+  return token;
+}
+
+function decryptToken(encrypted) {
+  if (!encrypted) return null;
+  try {
+    if (safeStorage && safeStorage.isEncryptionAvailable()) {
+      const buffer = Buffer.from(encrypted, 'base64');
+      return safeStorage.decryptString(buffer);
+    }
+  } catch (e) {
+    console.error('Token decryption failed:', e);
+  }
+  return encrypted;
+}
+
+function getDeviceFingerprint() {
+  const os = require('os');
+  const systemInfo = [
+    os.platform(),
+    os.arch(),
+    os.hostname(),
+    os.type(),
+    os.release(),
+    JSON.stringify(os.networkInterfaces())
+  ].join('|');
+  return crypto.createHash('sha256').update(systemInfo).digest('hex');
+}
+
+// Billing state management
+let lastAudioReceivedTime = 0;
+let activeListeningSeconds = 0;
+let billingSyncTimer = null;
+let currentBillingState = {
+  status: 'expired',
+  type: 'free',
+  free_queries_left: 0,
+  paid_minutes_left: 0,
+  expires_at: null
+};
+
+function startBillingTracking() {
+  if (billingSyncTimer) return;
+  
+  billingSyncTimer = setInterval(async () => {
+    const now = Date.now();
+    const config = readConfig();
+    const token = decryptToken(config.token);
+    
+    // 1. Clock Tampering Check (Anti-Spoofing)
+    const lastSync = parseInt(config.last_sync_time || '0', 10);
+    if (lastSync > 0 && now < lastSync) {
+      console.error('⚠️ Clock tampering detected! Local system time is behind last sync time.');
+      if (mainWindow) {
+        mainWindow.webContents.send('billing:expired', 'ClockTamper');
+      }
+      return;
+    }
+
+    // 2. Active Audio Usage Tracking
+    const isAudioActive = (now - lastAudioReceivedTime) < 2500; // Received audio chunk within last 2.5s
+    
+    if (isAudioActive) {
+      activeListeningSeconds++;
+      
+      // Every 30 seconds of active listening, sync with the server
+      if (activeListeningSeconds >= 30) {
+        activeListeningSeconds = 0;
+        
+        if (token) {
+          try {
+            const deviceId = getDeviceFingerprint();
+            const response = await axios.post(`${BACKEND_URL}/api/license/sync-usage`, {
+              deviceId,
+              minutesUsed: 0.5
+            }, {
+              headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            currentBillingState = response.data;
+            config.last_sync_time = now;
+            writeConfig(config);
+            
+            if (mainWindow) {
+              mainWindow.webContents.send('billing:state-updated', currentBillingState);
+            }
+            
+            if (currentBillingState.status === 'expired') {
+              console.log('🛑 Subscription expired during active use.');
+              if (mainWindow) {
+                mainWindow.webContents.send('billing:expired', 'Expired');
+              }
+            }
+          } catch (e) {
+            console.error('Failed to sync hourly usage:', e.message);
+          }
+        }
+      }
+    }
+  }, 1000);
+}
+
+async function syncBillingState() {
+  const config = readConfig();
+  const token = decryptToken(config.token);
+  
+  if (!token) {
+    currentBillingState = {
+      status: 'expired',
+      type: 'free',
+      free_queries_left: 0,
+      paid_minutes_left: 0,
+      expires_at: null
+    };
+    if (mainWindow) mainWindow.webContents.send('billing:state-updated', currentBillingState);
+    return;
+  }
+
+  try {
+    const deviceId = getDeviceFingerprint();
+    const response = await axios.post(`${BACKEND_URL}/api/license/status`, {
+      deviceId
+    }, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    currentBillingState = response.data;
+    config.last_sync_time = Date.now();
+    writeConfig(config);
+    
+    if (mainWindow) {
+      mainWindow.webContents.send('billing:state-updated', currentBillingState);
+    }
+    
+    if (currentBillingState.status === 'expired') {
+      if (mainWindow) mainWindow.webContents.send('billing:expired', 'Expired');
+    }
+  } catch (e) {
+    console.error('Failed to sync initial billing state:', e.message);
+    if (mainWindow) mainWindow.webContents.send('billing:state-updated', currentBillingState);
+  }
+}
+
+async function verifyAndChargeQuery(screenshotBase64 = null) {
+  const config = readConfig();
+  const token = decryptToken(config.token);
+  if (!token) {
+    throw new Error('Please log in or purchase a subscription to generate AI solutions.');
+  }
+  
+  const deviceId = getDeviceFingerprint();
+  
+  try {
+    const response = await axios.post(`${BACKEND_URL}/api/ai/solve`, {
+      transcriptHistory,
+      context: currentContext,
+      screenshotBase64,
+      deviceId
+    }, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+
+    if (!response.data.authorized) {
+      throw new Error('Payment Required. Out of credits or subscription expired.');
+    }
+    
+    // Sync current credit counts in background
+    syncBillingState();
+    return true;
+  } catch (error) {
+    if (error.response) {
+      const errMsg = error.response.data.error || 'Authorization failed';
+      if (error.response.status === 402) {
+        if (mainWindow) mainWindow.webContents.send('billing:expired', 'OutOfCredits');
+        throw new Error('Insufficient balance or expired subscription. Please purchase a plan.');
+      }
+      throw new Error(errMsg);
+    }
+    throw new Error('Licensing server unavailable. Please check your internet connection.');
+  }
+}
 
 function createStealthWindow() {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
@@ -33,7 +254,7 @@ function createStealthWindow() {
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,
-    title: 'System Host',
+    title: 'Shyoski',
     icon: null,
     focusable: true, // Allow focus for context input initially
     webPreferences: {
@@ -114,10 +335,6 @@ function createStealthWindow() {
     await analyzeScreen();
   });
 
-  if (isDev) {
-    // mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
-
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -136,6 +353,10 @@ app.whenReady().then(() => {
   // Periodic Internet Check
   setInterval(checkConnectivity, 5000);
   checkConnectivity();
+
+  // Start Licensing & Billing Checks
+  startBillingTracking();
+  setTimeout(syncBillingState, 1500);
 });
 
 app.on('window-all-closed', () => {
@@ -162,7 +383,6 @@ function startVoskService() {
     
     console.log('🎙️ Starting Offline Transcription (Whisper)...');
     
-    // Check for virtual environment python first
     let pythonPath = process.platform === 'win32' ? 'python' : 'python3';
     const venvPath = process.platform === 'win32' 
         ? path.join(__dirname, '..', '.venv', 'Scripts', 'python.exe')
@@ -202,8 +422,6 @@ function stopVoskService() {
     }
 }
 
-// Transcription Logic (Now handled via Deepgram)
-
 async function handleFinalTranscript(text) {
   if (!text || text.trim().length < 5) return;
   
@@ -234,6 +452,9 @@ async function analyzeScreen() {
 
     const base64Img = imgBuffer.toString('base64');
     
+    // Verify credits/subscription before executing AI query
+    await verifyAndChargeQuery(base64Img);
+    
     console.log('🚀 Sending to AI Pilot (Multimodal)...');
     const response = await aiService.generateSolution(transcriptHistory, currentContext, base64Img);
     console.log(`✅ ${response.provider} Response Received`);
@@ -246,15 +467,17 @@ async function analyzeScreen() {
 
 // IPC Handlers
 ipcMain.handle('get-env', (event, key) => process.env[key]);
+
 ipcMain.on('send-context', async (event, context) => {
     currentContext = context;
     console.log('🚀 Context Updated:', context.mode);
     
-    // If this came from a 'request-context' trigger, we should continue to AI
-    // We can detect this by checking if it's a full context update or just a mode switch
-    // Actually, the original code always triggered AI solution on send-context
     console.log('🚀 Sending to AI Pilot (Text-only)...');
+    mainWindow.webContents.send('ai-status', 'thinking');
     try {
+        // Verify credits/subscription before executing AI query
+        await verifyAndChargeQuery(null);
+
         const response = await aiService.generateSolution(transcriptHistory, context);
         console.log(`✅ ${response.provider} Response Received`);
         mainWindow.webContents.send('ai-solution', response.text);
@@ -263,7 +486,11 @@ ipcMain.on('send-context', async (event, context) => {
         mainWindow.webContents.send('ai-error', e.message);
     }
 });
+
 ipcMain.on('audio-data', (event, chunk) => {
+    // Record timestamp of audio packet for active usage tracking
+    lastAudioReceivedTime = Date.now();
+
     // If Deepgram is connected, use it. Otherwise, fallback to Local Whisper.
     if (deepgramService && deepgramService.isConnected()) {
         deepgramService.sendAudio(chunk);
@@ -280,4 +507,112 @@ ipcMain.on('close-app', () => {
     if (deepgramService) deepgramService.stop();
     app.quit();
 });
+
 ipcMain.on('minimize-app', () => mainWindow.minimize());
+
+// Commercial Billing & Auth Handlers
+ipcMain.handle('auth:login', async (event, credentials) => {
+    try {
+        const response = await axios.post(`${BACKEND_URL}/api/auth/login`, credentials);
+        const { token, user, license } = response.data;
+        
+        const config = readConfig();
+        config.token = encryptToken(token);
+        config.email = user.email;
+        config.last_sync_time = Date.now();
+        writeConfig(config);
+        
+        currentBillingState = license;
+        return { success: true, user, license };
+    } catch (e) {
+        console.error('Auth Login Error:', e.message);
+        const errorMsg = e.response?.data?.error || 'Could not connect to auth server.';
+        return { success: false, error: errorMsg };
+    }
+});
+
+ipcMain.handle('auth:register', async (event, credentials) => {
+    try {
+        const response = await axios.post(`${BACKEND_URL}/api/auth/register`, credentials);
+        const { token, user, license } = response.data;
+        
+        const config = readConfig();
+        config.token = encryptToken(token);
+        config.email = user.email;
+        config.last_sync_time = Date.now();
+        writeConfig(config);
+        
+        currentBillingState = license;
+        return { success: true, user, license };
+    } catch (e) {
+        console.error('Auth Register Error:', e.message);
+        const errorMsg = e.response?.data?.error || 'Could not complete registration.';
+        return { success: false, error: errorMsg };
+    }
+});
+
+ipcMain.handle('auth:logout', async (event) => {
+    const config = readConfig();
+    config.token = null;
+    config.email = null;
+    config.last_sync_time = 0;
+    writeConfig(config);
+    
+    currentBillingState = {
+        status: 'expired',
+        type: 'free',
+        free_queries_left: 0,
+        paid_minutes_left: 0,
+        expires_at: null
+    };
+    return { success: true };
+});
+
+ipcMain.handle('billing:get-state', async (event) => {
+    const config = readConfig();
+    const token = decryptToken(config.token);
+    
+    if (token) {
+        syncBillingState();
+    }
+    
+    return {
+        email: config.email,
+        loggedIn: !!token,
+        state: currentBillingState
+    };
+});
+
+ipcMain.handle('billing:purchase-plan', async (event, plan) => {
+    const config = readConfig();
+    const token = decryptToken(config.token);
+    if (!token) return { success: false, error: 'User session not found. Please log in.' };
+    
+    try {
+        const orderRes = await axios.post(`${BACKEND_URL}/api/payments/create-order`, { plan }, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        const { order_id, amount, currency, simulated } = orderRes.data;
+        
+        if (simulated) {
+            console.log('💸 Processing Simulated Payment:', order_id);
+            const verifyRes = await axios.post(`${BACKEND_URL}/api/payments/verify`, {
+                orderId: order_id,
+                paymentId: `pay_mock_${crypto.randomBytes(6).toString('hex')}`
+            }, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            
+            currentBillingState = verifyRes.data.license;
+            if (mainWindow) mainWindow.webContents.send('billing:state-updated', currentBillingState);
+            return { success: true, license: currentBillingState, simulated: true };
+        } else {
+            return { success: true, order_id, amount, currency, simulated: false };
+        }
+    } catch (e) {
+        console.error('Purchase Plan Error:', e.message);
+        const errorMsg = e.response?.data?.error || 'Payment order generation failed.';
+        return { success: false, error: errorMsg };
+    }
+});
