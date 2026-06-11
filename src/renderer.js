@@ -385,8 +385,40 @@ document.querySelectorAll('.btn-buy').forEach(btn => {
                     showStatusMessage(`Successfully upgraded to ${plan.toUpperCase()}! (Sandbox Simulation)`, 'var(--success)');
                     refreshBillingState();
                 } else {
-                    // Implement Razorpay checkout if real keys configured
-                    showStatusMessage('Razorpay order created! Payment gateway interface ready.', 'var(--warning)');
+                    // Start real Razorpay checkout overlay
+                    const options = {
+                        key: result.key_id,
+                        amount: result.amount,
+                        currency: result.currency,
+                        name: "Shyoski",
+                        description: `Purchase ${plan.toUpperCase()} Subscription`,
+                        order_id: result.order_id,
+                        handler: async function (response) {
+                            showStatusMessage('Payment completed! Verifying with server...', 'var(--accent-blue)');
+                            const verifyRes = await window.electronAPI.verifyPayment({
+                                orderId: result.order_id,
+                                paymentId: response.razorpay_payment_id,
+                                signature: response.razorpay_signature
+                            });
+                            if (verifyRes.success) {
+                                showStatusMessage('Payment verified! Subscription active.', 'var(--success)');
+                                refreshBillingState();
+                            } else {
+                                showStatusMessage(`Verification failed: ${verifyRes.error}`, '#ef4444');
+                            }
+                        },
+                        prefill: {
+                            email: billingUserEmail.innerText
+                        },
+                        theme: {
+                            color: "#3b82f6"
+                        }
+                    };
+                    const rzp = new Razorpay(options);
+                    rzp.on('payment.failed', function (resp) {
+                        showStatusMessage(`Payment failed: ${resp.error.description}`, '#ef4444');
+                    });
+                    rzp.open();
                 }
             } else {
                 showStatusMessage(`Upgrade failed: ${result.error}`, '#ef4444');

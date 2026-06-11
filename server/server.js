@@ -294,6 +294,7 @@ app.post('/api/payments/create-order', authenticateToken, async (req, res) => {
                 order_id: order.id,
                 amount: order.amount,
                 currency: order.currency,
+                key_id: process.env.RAZORPAY_KEY_ID,
                 simulated: false
             });
         } else {

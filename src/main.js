@@ -616,3 +616,22 @@ ipcMain.handle('billing:purchase-plan', async (event, plan) => {
         return { success: false, error: errorMsg };
     }
 });
+
+ipcMain.handle('billing:verify-payment', async (event, details) => {
+    const config = readConfig();
+    const token = decryptToken(config.token);
+    if (!token) return { success: false, error: 'User session not found. Please log in.' };
+    
+    try {
+        const response = await axios.post(`${BACKEND_URL}/api/payments/verify`, details, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        currentBillingState = response.data.license;
+        if (mainWindow) mainWindow.webContents.send('billing:state-updated', currentBillingState);
+        return { success: true, license: currentBillingState };
+    } catch (e) {
+        console.error('Verify Payment IPC Error:', e.message);
+        const errorMsg = e.response?.data?.error || 'Payment verification failed.';
+        return { success: false, error: errorMsg };
+    }
+});
