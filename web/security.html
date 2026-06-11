@@ -36,10 +36,10 @@
 
         <article class="doc-content">
             <h2>1. Display Capture Exclusion Policy</h2>
-            <p>Shyoski prevents any operating system-level recording or snapshotting of its visual workspace. We implement native operating system hooks to flag the application window context:</p>
+            <p>Shyoski prevents any operating system-level recording or snapshotting of its visual workspace. We implement native operating system and GPU-level display isolation flags to protect the application window context:</p>
             <ul>
-                <li><strong>macOS APIs:</strong> We configure the underlying Cocoa window representation to enforce `sharingType = NSWindowSharingNone` and register the browser frame inside the Apple Quartz Window Server framework with `excludesFromCapture = true`.</li>
-                <li><strong>Windows APIs:</strong> On Windows platforms, we trigger the Desktop Window Manager (DWM) hook: `SetWindowDisplayAffinity(hwnd, WDA_EXCLUDEFROMCAPTURE)`.</li>
+                <li><strong>macOS Display Shield:</strong> We enforce hardware-level window exclusions that isolate the visual frame directly within the Apple Quartz Window Server framework, preventing screen recorders from obtaining the frame buffer.</li>
+                <li><strong>Windows Display Shield:</strong> On Windows, we trigger secure Desktop Window Manager (DWM) policies to exclude the application window overlay from desktop capture pipelines.</li>
             </ul>
             <p><strong>Result:</strong> Any proctoring browser extension, screen sharing tool (Zoom, Teams, Discord), or background recording utility (OBS, Loom) will record a blank, transparent window instead of our overlay interface, keeping your workspace private.</p>
 
