@@ -426,6 +426,69 @@ header {
     color: var(--text-secondary);
 }
 
+.forgot-password-link {
+    display: inline-block;
+    float: right;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: 0.25rem;
+}
+
+.forgot-password-link:hover {
+    color: var(--accent-purple);
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    margin: 1.5rem 0;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.auth-divider:not(:empty)::before {
+    margin-right: .5em;
+}
+
+.auth-divider:not(:empty)::after {
+    margin-left: .5em;
+}
+
+.btn-google {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    width: 100%;
+    background: #ffffff;
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    padding: 0.75rem;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 0.95rem;
+    cursor: pointer;
+    box-shadow: 0 2px 4px rgba(184, 144, 71, 0.05);
+    transition: all var(--transition-speed);
+}
+
+.btn-google:hover {
+    background: #fafaf9;
+    border-color: rgba(184, 144, 71, 0.4);
+    transform: translateY(-1px);
+}
+
 /* User Dashboard */
 .dashboard-wrapper {
     max-width: 1000px;

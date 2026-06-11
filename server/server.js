@@ -144,6 +144,199 @@ app.post('/api/auth/login', async (req, res) => {
     }
 });
 
+// Memory map to store password reset tokens: token -> { email, expires }
+const resetTokens = new Map();
+
+// 1.1 Forgot Password Endpoint
+app.post('/api/auth/forgot-password', async (req, res) => {
+    const { email } = req.body;
+    if (!email) {
+        return res.status(400).json({ error: 'Email is required' });
+    }
+
+    try {
+        const user = await db.get('SELECT id FROM users WHERE email = ?', [email]);
+        if (!user) {
+            // Protect against email enumeration - return success anyway
+            return res.json({ message: 'If that email exists, a reset link has been generated.' });
+        }
+
+        const token = crypto.randomBytes(20).toString('hex');
+        resetTokens.set(token, {
+            email: email,
+            expires: Date.now() + 3600000 // 1 hour
+        });
+
+        const resetLink = `${process.env.BACKEND_URL || 'http://localhost:5005'}/api/auth/reset-password?token=${token}`;
+        console.log(`\n🔗 [SHYOSKI PASSWORD RESET] Send this link to ${email}:\n👉 ${resetLink}\n`);
+
+        res.json({ message: 'A password reset link has been sent to your email.' });
+    } catch (e) {
+        console.error('Forgot Password Error:', e);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+});
+
+// 1.2 Get Reset Password Form
+app.get('/api/auth/reset-password', (req, res) => {
+    const { token } = req.query;
+    if (!token || !resetTokens.has(token)) {
+        return res.status(400).send(`
+            <html>
+                <body style="font-family:-apple-system,sans-serif;text-align:center;padding:50px;background:#faf9f5;color:#1e293b;">
+                    <h2>❌ Invalid or Expired Token</h2>
+                    <p>The password reset link is invalid or has expired. Please request a new one.</p>
+                </body>
+            </html>
+        `);
+    }
+
+    const tokenData = resetTokens.get(token);
+    if (Date.now() > tokenData.expires) {
+        resetTokens.delete(token);
+        return res.status(400).send(`
+            <html>
+                <body style="font-family:-apple-system,sans-serif;text-align:center;padding:50px;background:#faf9f5;color:#1e293b;">
+                    <h2>❌ Link Expired</h2>
+                    <p>This password reset link has expired. Please request a new one.</p>
+                </body>
+            </html>
+        `);
+    }
+
+    // Serve HTML form
+    res.send(`
+        <html>
+            <head>
+                <title>Reset Password - Shyoski</title>
+                <style>
+                    body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #faf9f5; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #1e293b; }
+                    .card { background: #ffffff; border: 1px solid rgba(184,144,71,0.15); border-radius: 16px; padding: 2.5rem; width: 100%; max-width: 400px; box-shadow: 0 10px 25px rgba(184,144,71,0.05); }
+                    .logo { display: flex; align-items: center; gap: 0.5rem; justify-content: center; font-size: 1.5rem; font-weight: 800; color: #8c6221; margin-bottom: 1.5rem; }
+                    h2 { text-align: center; margin-bottom: 1.5rem; font-size: 1.25rem; }
+                    .form-group { margin-bottom: 1.25rem; }
+                    label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 0.5rem; }
+                    input { width: 100%; padding: 0.75rem 1rem; border: 1px solid rgba(184,144,71,0.15); border-radius: 8px; font-size: 0.95rem; box-sizing: border-box; background: #fafaf9; }
+                    input:focus { outline: none; border-color: #b89047; }
+                    button { width: 100%; padding: 0.75rem; border-radius: 8px; border: none; font-weight: 600; color: white; background: linear-gradient(135deg, #b89047, #8c6221); cursor: pointer; margin-top: 1rem; }
+                </style>
+            </head>
+            <body>
+                <div class="card">
+                    <div class="logo">
+                        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#b89047" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="fill: rgba(212, 175, 55, 0.15);"><path d="M12 2v20M12 10C9 5 3 6 3 11c0 4 6 8 9 11 3-3 9-7 9-11 0-5-6-6-9-1M12 10c-3 3-9 2-9-3 0-4 6-5 9-1 3-4 9-3 9 1 0 5-6 6-9 3"/></svg>
+                        Shyoski
+                    </div>
+                    <h2>Reset Your Password</h2>
+                    <form action="/api/auth/reset-password" method="POST">
+                        <input type="hidden" name="token" value="${token}">
+                        <div class="form-group">
+                            <label>New Password</label>
+                            <input type="password" name="password" required minlength="6" placeholder="••••••••">
+                        </div>
+                        <button type="submit">Update Password</button>
+                    </form>
+                </div>
+            </body>
+        </html>
+    `);
+});
+
+// 1.3 Handle Reset Password Form Submission
+app.post('/api/auth/reset-password', express.urlencoded({ extended: true }), async (req, res) => {
+    const { token, password } = req.body;
+
+    if (!token || !password || !resetTokens.has(token)) {
+        return res.status(400).send('<h2>Invalid request or expired reset session.</h2>');
+    }
+
+    const tokenData = resetTokens.get(token);
+    if (Date.now() > tokenData.expires) {
+        resetTokens.delete(token);
+        return res.status(400).send('<h2>Token has expired. Please request a new reset link.</h2>');
+    }
+
+    try {
+        const passwordHash = await bcrypt.hash(password, 10);
+        await db.run('UPDATE users SET password_hash = ? WHERE email = ?', [passwordHash, tokenData.email]);
+        resetTokens.delete(token);
+
+        res.send(`
+            <html>
+                <head>
+                    <title>Password Reset Successful</title>
+                    <style>
+                        body { font-family:-apple-system,sans-serif; text-align:center; padding:50px; background:#faf9f5; color:#1e293b; display:flex; align-items:center; justify-content:center; height:100vh; margin:0; }
+                        .card { background:#ffffff; border:1px solid rgba(184,144,71,0.15); padding:2.5rem; border-radius:16px; box-shadow: 0 10px 25px rgba(184,144,71,0.05); }
+                        h2 { color:#0d9488; }
+                    </style>
+                </head>
+                <body>
+                    <div class="card">
+                        <h2>✓ Password Updated</h2>
+                        <p>Your password has been successfully updated.</p>
+                        <p>You can close this tab and log in to the Shyoski app now.</p>
+                    </div>
+                </body>
+            </html>
+        `);
+    } catch (e) {
+        console.error('Reset password post error:', e);
+        res.status(500).send('<h2>Internal server error.</h2>');
+    }
+});
+
+// 1.4 Google Sign-In / Auto-Registration API
+app.post('/api/auth/google', async (req, res) => {
+    const { email } = req.body;
+
+    if (!email) {
+        return res.status(400).json({ error: 'Google authentication email is required.' });
+    }
+
+    try {
+        let user = await db.get('SELECT * FROM users WHERE email = ?', [email]);
+        
+        if (!user) {
+            // Auto-register the Google user with a randomized blank password hash
+            const fakePasswordHash = await bcrypt.hash(crypto.randomBytes(16).toString('hex'), 10);
+            
+            await db.transaction(async () => {
+                const userResult = await db.run(
+                    'INSERT INTO users (email, password_hash) VALUES (?, ?)',
+                    [email, fakePasswordHash]
+                );
+                const userId = userResult.id;
+
+                // Initialize free trial license
+                await db.run(
+                    'INSERT INTO licenses (user_id, status, type, free_queries_left) VALUES (?, ?, ?, ?)',
+                    [userId, 'free_trial', 'free', 5]
+                );
+            });
+            user = await db.get('SELECT * FROM users WHERE email = ?', [email]);
+        }
+
+        const license = await db.get('SELECT * FROM licenses WHERE user_id = ?', [user.id]);
+        const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+
+        res.json({
+            token,
+            user: { email: user.email },
+            license: {
+                status: license.status,
+                type: license.type,
+                free_queries_left: license.free_queries_left,
+                paid_minutes_left: license.paid_minutes_left,
+                expires_at: license.expires_at
+            }
+        });
+    } catch (e) {
+        console.error('Google Sign-In Error:', e);
+        res.status(500).json({ error: 'Server error processing Google Sign-in.' });
+    }
+});
+
 // 2. License Status Endpoint with Device Locking
 app.post('/api/license/status', authenticateToken, async (req, res) => {
     const { deviceId } = req.body;
