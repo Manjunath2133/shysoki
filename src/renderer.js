@@ -371,7 +371,6 @@ btnLogout.onclick = async () => {
 document.querySelectorAll('.btn-buy').forEach(btn => {
     btn.onclick = async () => {
         const plan = btn.getAttribute('data-plan');
-        const originalText = btn.innerText;
         btn.disabled = true;
         btn.innerText = 'Processing...';
 
@@ -379,33 +378,47 @@ document.querySelectorAll('.btn-buy').forEach(btn => {
             const result = await window.electronAPI.purchasePlan(plan);
             
             btn.disabled = false;
-            btn.innerText = originalText; // Restore price label
+            btn.innerText = btn.parentElement.querySelector('.btn-buy').innerText; // Restore price label
 
             if (result.success) {
                 if (result.simulated) {
                     showStatusMessage(`Successfully upgraded to ${plan.toUpperCase()}! (Sandbox Simulation)`, 'var(--success)');
                     refreshBillingState();
                 } else {
-                    showStatusMessage('Redirected to Stripe checkout page. Waiting for payment completion...', 'var(--accent-blue)');
-                    
-                    // Poll server to check payment completion
-                    let attempts = 0;
-                    const maxAttempts = 100; // ~5 minutes timeout
-                    const pollInterval = setInterval(async () => {
-                        attempts++;
-                        if (attempts > maxAttempts) {
-                            clearInterval(pollInterval);
-                            showStatusMessage('Payment verification timed out. If you already paid, please check the status later.', '#ef4444');
-                            return;
+                    // Start real Razorpay checkout overlay
+                    const options = {
+                        key: result.key_id,
+                        amount: result.amount,
+                        currency: result.currency,
+                        name: "Shyoski",
+                        description: `Purchase ${plan.toUpperCase()} Subscription`,
+                        order_id: result.order_id,
+                        handler: async function (response) {
+                            showStatusMessage('Payment completed! Verifying with server...', 'var(--accent-blue)');
+                            const verifyRes = await window.electronAPI.verifyPayment({
+                                orderId: result.order_id,
+                                paymentId: response.razorpay_payment_id,
+                                signature: response.razorpay_signature
+                            });
+                            if (verifyRes.success) {
+                                showStatusMessage('Payment verified! Subscription active.', 'var(--success)');
+                                refreshBillingState();
+                            } else {
+                                showStatusMessage(`Verification failed: ${verifyRes.error}`, '#ef4444');
+                            }
+                        },
+                        prefill: {
+                            email: billingUserEmail.innerText
+                        },
+                        theme: {
+                            color: "#3b82f6"
                         }
-
-                        const verifyRes = await window.electronAPI.verifyPayment({ orderId: result.order_id });
-                        if (verifyRes.success) {
-                            clearInterval(pollInterval);
-                            showStatusMessage(`Payment verified! Subscription ${plan.toUpperCase()} active.`, 'var(--success)');
-                            refreshBillingState();
-                        }
-                    }, 3000);
+                    };
+                    const rzp = new Razorpay(options);
+                    rzp.on('payment.failed', function (resp) {
+                        showStatusMessage(`Payment failed: ${resp.error.description}`, '#ef4444');
+                    });
+                    rzp.open();
                 }
             } else {
                 showStatusMessage(`Upgrade failed: ${result.error}`, '#ef4444');
