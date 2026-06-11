@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Changelog - Shyoski</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+    <!-- Header Navigation -->
+    <header>
+        <div class="nav-container">
+            <div class="logo">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                Shyoski
+            </div>
+            <nav class="nav-links">
+                <a href="index.html" class="nav-link">Home</a>
+                <a href="index.html#features" class="nav-link">Features</a>
+                <a href="careers.html" class="nav-link">Careers</a>
+                <a href="security.html" class="nav-link">Security</a>
+                <a href="dashboard.html" id="nav-dashboard-link" class="btn btn-secondary" style="display: none;">Go to Dashboard</a>
+                <button id="btn-login-trigger" class="btn btn-primary">Sign In</button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- Changelog Wrapper -->
+    <section class="doc-wrapper" style="max-width: 900px;">
+        <div class="doc-header">
+            <div class="badge">Product Updates</div>
+            <h1>Product Changelog</h1>
+            <p>Stay updated with the latest improvements, optimizations, and security updates compiled into the Shyoski platform.</p>
+        </div>
+
+        <!-- Timeline -->
+        <div class="timeline">
+            <!-- v1.0.1 -->
+            <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div class="timeline-header">
+                    <span class="timeline-version">v1.0.1</span>
+                    <span class="timeline-date">June 2026</span>
+                    <span class="tag tag-new">Security Upgrades</span>
+                </div>
+                <div class="changelog-card">
+                    <h4>What's New:</h4>
+                    <ul>
+                        <li><strong>Razorpay Integration Web Portal</strong>: Enabled customer dashboard payments directly inside browsers using Razorpay's native SDK overlays.</li>
+                        <li><strong>Web Bypass Device Lockout</strong>: Added automatic detection to bypass device fingerprint locking when query routes come from `web_dashboard` portals.</li>
+                    </ul>
+                    <h4>Bug Fixes & Tweaks:</h4>
+                    <ul>
+                        <li>Restored session validation check handlers inside the Electron client `billing:purchase-plan` API calls.</li>
+                        <li>Added fallback simulated checkout flows if gateway secret key tokens are not configured on Render.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- v1.0.0 -->
+            <div class="timeline-item">
+                <div class="timeline-dot"></div>
+                <div class="timeline-header">
+                    <span class="timeline-version">v1.0.0</span>
+                    <span class="timeline-date">May 2026</span>
+                    <span class="tag tag-new">Initial Launch</span>
+                </div>
+                <div class="changelog-card">
+                    <h4>What's New:</h4>
+                    <ul>
+                        <li><strong>Shyoski Launch</strong>: Official launch of the next-generation stealth AI-assisted translation overlay.</li>
+                        <li><strong>Hardware Display Capture Exclusion</strong>: Completed native hooks for Quartz filters and DWM flags to exclude application frames from zoom shares, mettl tests, and screen records.</li>
+                        <li><strong>6-Tier Access passes</strong>: Configured flexible hourly options (₹30 for 60 mins) and subscription memberships (1 day, 1 month, 3 months, 6 months, 1 year).</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Premium Footer -->
+    <footer>
+        <div class="footer-container">
+            <div class="footer-grid">
+                <div class="footer-col brand-col">
+                    <div class="footer-brand">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                        Shyoski
+                    </div>
+                    <p class="footer-desc">Elite translation and screen-shielded resolution companions. Secure your performance limits.</p>
+                </div>
+                <div class="footer-col">
+                    <h5>Product</h5>
+                    <ul class="footer-links">
+                        <li><a href="index.html#features">Features</a></li>
+                        <li><a href="index.html#pricing">Pricing</a></li>
+                        <li><a href="https://github.com/Manjunath2133/shysoki/releases">Downloads</a></li>
+                        <li><a href="security.html">Security Shield</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h5>Company</h5>
+                    <ul class="footer-links">
+                        <li><a href="careers.html">Careers</a></li>
+                        <li><a href="changelog.html">Changelog</a></li>
+                        <li><a href="security.html">Privacy Promise</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h5>Legal</h5>
+                    <ul class="footer-links">
+                        <li><a href="terms.html">Terms of Service</a></li>
+                        <li><a href="privacy.html">Privacy Policy</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <span>© 2026 Shyoski Inc. All rights reserved.</span>
+                <span>Designed for next-generation performance.</span>
+            </div>
+        </div>
+    </footer>
+
+    <!-- Auth Modal Loader -->
+    <div id="auth-modal" class="modal-overlay">
+        <div class="modal-container">
+            <button class="modal-close" id="btn-modal-close">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+            <h3 class="modal-title" id="auth-modal-title">Sign In</h3>
+            
+            <form id="auth-form">
+                <div class="form-group">
+                    <label class="form-label" for="auth-email">Email Address</label>
+                    <input type="email" id="auth-email" class="form-input" placeholder="you@example.com" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="auth-password">Password</label>
+                    <input type="password" id="auth-password" class="form-input" placeholder="••••••••" required>
+                </div>
+                
+                <div id="auth-error-msg" style="color: var(--danger); font-size: 0.85rem; margin-bottom: 1.25rem; display: none; text-align: center;"></div>
+                
+                <button type="submit" id="btn-auth-submit" class="btn btn-primary" style="width: 100%; padding: 0.75rem;">Sign In</button>
+            </form>
+            
+            <div class="form-toggle">
+                <span id="auth-toggle-prompt">Don't have an account?</span>
+                <a href="#" id="auth-toggle-link" style="font-weight: 600;">Sign Up</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="app.js"></script>
+</body>
+</html>
