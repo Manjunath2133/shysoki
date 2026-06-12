@@ -4,3 +4,5 @@ dist/
 .venv/
 *.log
 .DS_Store
+web_backup/
+
