@@ -2,7 +2,7 @@ import React from 'react';
 
 export default function Logo({ variant = 'header' }) {
   const isFooter = variant === 'footer';
-  const imgHeight = isFooter ? '32px' : '28px';
+  const imgHeight = isFooter ? '48px' : '40px';
   
   return (
     <div className={isFooter ? "footer-brand" : "logo"}>

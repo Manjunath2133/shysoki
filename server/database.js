@@ -67,6 +67,17 @@ async function initPgDb() {
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
 
+        await pgPool.query(`CREATE TABLE IF NOT EXISTS applications (
+            id SERIAL PRIMARY KEY,
+            job_title VARCHAR(255) NOT NULL,
+            candidate_name VARCHAR(255) NOT NULL,
+            candidate_email VARCHAR(255) NOT NULL,
+            github_url VARCHAR(255),
+            resume_url VARCHAR(255) NOT NULL,
+            cover_letter TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )`);
+
         console.log('✅ PostgreSQL Tables Initialized');
     } catch (e) {
         console.error('❌ Failed to initialize Postgres tables:', e.message);
@@ -105,6 +116,17 @@ function initSqliteDb() {
             status TEXT DEFAULT 'pending',
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )`);
+
+        sqliteDb.run(`CREATE TABLE IF NOT EXISTS applications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            job_title TEXT NOT NULL,
+            candidate_name TEXT NOT NULL,
+            candidate_email TEXT NOT NULL,
+            github_url TEXT,
+            resume_url TEXT NOT NULL,
+            cover_letter TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`);
 
         console.log('✅ SQLite Tables Initialized');

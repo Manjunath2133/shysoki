@@ -154,42 +154,44 @@ export default function Home() {
         <p className="section-subtitle">
           A detailed breakdown of why top industry professionals choose Shyoski over general AI tools.
         </p>
-        <table className="compare-table">
-          <thead>
-            <tr>
-              <th>Capability</th>
-              <th>Shyoski Enterprise</th>
-              <th>Standard AI Assistant</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Display Capture Protection (Anti-Screenshot)</td>
-              <td className="compare-check">✔ Hardware level</td>
-              <td>❌ None (Capturable)</td>
-            </tr>
-            <tr>
-              <td>System Audio & Microphone Loopback capture</td>
-              <td className="compare-check">✔ Local low-latency</td>
-              <td>❌ Web browser only</td>
-            </tr>
-            <tr>
-              <td>Local Session Encryption</td>
-              <td className="compare-check">✔ safeStorage API</td>
-              <td>❌ Plain text cache</td>
-            </tr>
-            <tr>
-              <td>Silent Lockout (Ghost Mode)</td>
-              <td className="compare-check">✔ Alt+Shift+G Override</td>
-              <td>❌ Standard popups</td>
-            </tr>
-            <tr>
-              <td>Flexible Micro-billing</td>
-              <td className="compare-check">✔ Hourly & Duration Passes</td>
-              <td>❌ Fixed monthly only</td>
-            </tr>
-          </tbody>
-        </table>
+        <div className="compare-table-wrapper">
+          <table className="compare-table">
+            <thead>
+              <tr>
+                <th>Capability</th>
+                <th>Shyoski Enterprise</th>
+                <th>Standard AI Assistant</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Display Capture Protection (Anti-Screenshot)</td>
+                <td className="compare-check">✔ Hardware level</td>
+                <td>❌ None (Capturable)</td>
+              </tr>
+              <tr>
+                <td>System Audio & Microphone Loopback capture</td>
+                <td className="compare-check">✔ Local low-latency</td>
+                <td>❌ Web browser only</td>
+              </tr>
+              <tr>
+                <td>Local Session Encryption</td>
+                <td className="compare-check">✔ safeStorage API</td>
+                <td>❌ Plain text cache</td>
+              </tr>
+              <tr>
+                <td>Silent Lockout (Ghost Mode)</td>
+                <td className="compare-check">✔ Alt+Shift+G Override</td>
+                <td>❌ Standard popups</td>
+              </tr>
+              <tr>
+                <td>Flexible Micro-billing</td>
+                <td className="compare-check">✔ Hourly & Duration Passes</td>
+                <td>❌ Fixed monthly only</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </section>
 
       {/* Testimonials Section */}

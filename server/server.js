@@ -733,6 +733,30 @@ app.post('/api/ai/solve', authenticateToken, async (req, res) => {
     }
 });
 
+// 7. Careers Job Application Endpoint
+app.post('/api/careers/apply', async (req, res) => {
+    const { jobTitle, name, email, githubUrl, resumeUrl, coverLetter } = req.body;
+
+    if (!jobTitle || !name || !email || !resumeUrl) {
+        return res.status(400).json({ error: 'Job title, candidate name, email, and resume URL are required.' });
+    }
+
+    try {
+        const result = await db.run(
+            `INSERT INTO applications (job_title, candidate_name, candidate_email, github_url, resume_url, cover_letter) 
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [jobTitle, name, email, githubUrl || null, resumeUrl, coverLetter || null]
+        );
+
+        console.log(`💼 New Job Application for "${jobTitle}" submitted by ${name} (${email}) - ID: ${result.id}`);
+        res.status(201).json({ success: true, message: 'Application submitted successfully!', applicationId: result.id });
+    } catch (e) {
+        console.error('Job Application Submission Error:', e);
+        res.status(500).json({ error: 'Failed to submit application due to database error.' });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`🚀 Licensing backend listening on port ${PORT}`);
 });
+
