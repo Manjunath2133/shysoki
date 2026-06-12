@@ -551,6 +551,146 @@ ipcMain.handle('auth:register', async (event, credentials) => {
     }
 });
 
+ipcMain.handle('auth:google', async (event) => {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    
+    return new Promise((resolve) => {
+        const authWindow = new BrowserWindow({
+            width: 500,
+            height: 600,
+            parent: mainWindow,
+            modal: true,
+            title: 'Sign in with Google',
+            webPreferences: {
+                nodeIntegration: false,
+                contextIsolation: true
+            }
+        });
+
+        let resolved = false;
+
+        const cleanup = (errorMsg) => {
+            if (!resolved) {
+                resolved = true;
+                if (!authWindow.isDestroyed()) {
+                    authWindow.destroy();
+                }
+                resolve({ success: false, error: errorMsg || 'Google login cancelled' });
+            }
+        };
+
+        authWindow.on('closed', () => {
+            cleanup('Google login window was closed');
+        });
+
+        const handleAuthRedirect = async (url) => {
+            try {
+                if (clientId) {
+                    // Real Google OAuth Flow: Look for access_token in the redirect fragment
+                    if (url.includes('access_token=')) {
+                        const fragment = url.split('#')[1];
+                        const params = new URLSearchParams(fragment);
+                        const accessToken = params.get('access_token');
+                        
+                        if (accessToken) {
+                            resolved = true;
+                            authWindow.destroy();
+                            
+                            const response = await axios.post(`${BACKEND_URL}/api/auth/google`, { accessToken });
+                            const { token, user, license } = response.data;
+                            
+                            const config = readConfig();
+                            config.token = encryptToken(token);
+                            config.email = user.email;
+                            config.last_sync_time = Date.now();
+                            writeConfig(config);
+                            
+                            currentBillingState = license;
+                            resolve({ success: true, user, license });
+                        }
+                    }
+                } else {
+                    // Mock Flow: Look for query parameters on local success navigation
+                    if (url.startsWith('http://localhost/success')) {
+                        const parsedUrl = new URL(url);
+                        const email = parsedUrl.searchParams.get('email');
+                        
+                        if (email) {
+                            resolved = true;
+                            authWindow.destroy();
+                            
+                            const response = await axios.post(`${BACKEND_URL}/api/auth/google`, { email });
+                            const { token, user, license } = response.data;
+                            
+                            const config = readConfig();
+                            config.token = encryptToken(token);
+                            config.email = user.email;
+                            config.last_sync_time = Date.now();
+                            writeConfig(config);
+                            
+                            currentBillingState = license;
+                            resolve({ success: true, user, license });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.error('Google Auth Handler Error:', e.message);
+                const errorMsg = e.response?.data?.error || 'Could not complete Google authentication.';
+                cleanup(errorMsg);
+            }
+        };
+
+        authWindow.webContents.on('will-navigate', (e, url) => {
+            handleAuthRedirect(url);
+        });
+
+        authWindow.webContents.on('did-navigate', (e, url) => {
+            handleAuthRedirect(url);
+        });
+
+        if (clientId) {
+            // Load real Google OAuth 2.0 endpoint
+            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=http://localhost:5005/api/auth/google/callback&response_type=token&scope=email%20profile%20openid`;
+            authWindow.loadURL(authUrl);
+        } else {
+            // Load self-contained mock page using data URL
+            const mockHtml = `
+                <html>
+                    <head>
+                        <title>Sign in with Google</title>
+                        <style>
+                            body { font-family: -apple-system, sans-serif; background: #11111b; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; color: #f8fafc; }
+                            .card { background: #1e1e2e; border: 1px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 2.5rem; width: 100%; max-width: 350px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); text-align: center; }
+                            input { width: 100%; padding: 0.75rem; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); border-radius: 8px; margin: 1.25rem 0; font-size: 0.95rem; box-sizing: border-box; color: white; }
+                            input:focus { outline: none; border-color: #3b82f6; }
+                            button { width: 100%; padding: 0.75rem; background: #4285f4; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+                            button:hover { background: #357ae8; }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="card">
+                            <svg width="40" height="40" viewBox="0 0 24 24" style="margin-bottom:1rem;"><path fill="#ea4335" d="M12 5.04c1.65 0 3.13.57 4.3 1.69l3.22-3.22C17.56 1.63 14.97 1 12 1 7.37 1 3.4 3.73 1.58 7.72l3.81 2.95C6.28 7.35 8.9 5.04 12 5.04z"/><path fill="#4285f4" d="M23.49 12.27c0-.81-.07-1.59-.2-2.35H12v4.51h6.46c-.29 1.48-1.14 2.73-2.43 3.56l3.77 2.92c2.2-2.03 3.49-5.02 3.49-8.64z"/><path fill="#34a853" d="M12 23c2.97 0 5.46-1.09 7.28-2.95l-3.77-2.92c-1.04.7-2.38 1.12-3.51 1.12-3.1 0-5.72-2.31-6.61-5.63l-3.81 2.95C3.4 20.27 7.37 23 12 23z"/><path fill="#fbbc05" d="M5.39 12.62a7.1 7.1 0 0 1 0-4.24l-3.81-2.95A11.96 11.96 0 0 0 1 12c0 2.45.74 4.74 2.01 6.66l3.81-2.95a7.1 7.1 0 0 1-.43-3.09z"/></svg>
+                            <h2 style="font-size:1.25rem; margin-bottom: 0.25rem;">Sign in with Google</h2>
+                            <p style="color:#94a3b8; font-size:0.85rem; margin:0;">to continue to Shyoski App</p>
+                            <input type="email" id="google-email" value="googleuser@gmail.com" required>
+                            <button id="btn-google-auth">Continue</button>
+                        </div>
+                        <script>
+                            document.getElementById('btn-google-auth').onclick = function() {
+                                const email = document.getElementById('google-email').value;
+                                if (email) {
+                                    window.location.href = 'http://localhost/success?email=' + encodeURIComponent(email);
+                                }
+                            };
+                        </script>
+                    </body>
+                </html>
+            `;
+            authWindow.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(mockHtml));
+        }
+    });
+});
+
 ipcMain.handle('auth:logout', async (event) => {
     const config = readConfig();
     config.token = null;

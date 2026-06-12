@@ -1,11 +1,16 @@
 // Configuration: Autodetect backend environment
-const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+const API_URL = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || window.location.protocol === 'file:'
     ? 'http://localhost:5005'
     : 'https://shysoki-api.onrender.com';
 
 // Local Storage Session Keys
 const TOKEN_KEY = 'shyoski_user_token';
 const EMAIL_KEY = 'shyoski_user_email';
+
+// Google OAuth Global State
+let googleClientId = null;
+let googleTokenClient = null;
+
 
 // State Helper
 function getToken() {
@@ -15,6 +20,38 @@ function getToken() {
 function getEmail() {
     return localStorage.getItem(EMAIL_KEY);
 }
+
+// Fetch Google Client ID and initialize Google Identity Services client
+async function initGoogleOAuth() {
+    try {
+        const res = await fetch(`${API_URL}/api/auth/google/client-id`);
+        if (res.ok) {
+            const data = await res.json();
+            if (data.clientId) {
+                googleClientId = data.clientId;
+                // Wait until google.accounts exists (it might be loaded async)
+                const checkGoogle = setInterval(() => {
+                    if (window.google && window.google.accounts) {
+                        clearInterval(checkGoogle);
+                        googleTokenClient = google.accounts.oauth2.initTokenClient({
+                            client_id: googleClientId,
+                            scope: 'email profile openid',
+                            callback: async (tokenResponse) => {
+                                if (tokenResponse && tokenResponse.access_token) {
+                                    await handleGoogleLoginSuccess({ accessToken: tokenResponse.access_token });
+                                }
+                            }
+                        });
+                        console.log('🛡️ Real Google OAuth initialized with Client ID');
+                    }
+                }, 100);
+            }
+        }
+    } catch (e) {
+        console.warn('Could not initialize Real Google OAuth (falling back to Mock Mode):', e);
+    }
+}
+initGoogleOAuth();
 
 // -------------------------------------------------------------
 // LANDING PAGE & MODAL CONTROLLER
@@ -165,8 +202,41 @@ function closeAuthModal() {
 // -------------------------------------------------------------
 // GOOGLE SIGN-IN INTERACTIVE MOCK POPUP
 // -------------------------------------------------------------
+// Helper to complete Google login after success (mock or real)
+async function handleGoogleLoginSuccess(payload) {
+    showToast('Verifying Google credentials...', 'var(--accent-blue)');
+    try {
+        const res = await fetch(`${API_URL}/api/auth/google`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.error || 'Google Authentication failed');
+        }
+
+        // Save Google user session
+        localStorage.setItem(TOKEN_KEY, data.token);
+        localStorage.setItem(EMAIL_KEY, data.user.email);
+
+        showToast('Google Sign-In Successful!', 'var(--success)');
+        closeAuthModal();
+        window.location.href = 'dashboard.html';
+    } catch (err) {
+        alert("Google Authentication Error: " + err.message);
+    }
+}
+
 if (btnGoogleSignin) {
     btnGoogleSignin.onclick = () => {
+        if (googleTokenClient) {
+            googleTokenClient.requestAccessToken();
+            return;
+        }
+
+        // Fallback: interactive mock popup
         const width = 500;
         const height = 580;
         const left = (window.screen.width - width) / 2;
@@ -203,7 +273,9 @@ if (btnGoogleSignin) {
                             const email = document.getElementById('google-email').value;
                             if (email) {
                                 window.opener.postMessage({ type: 'google-login-success', email: email }, '*');
-                                window.close();
+                                setTimeout(() => {
+                                    window.close();
+                                }, 100);
                             }
                         };
                     </script>
@@ -213,34 +285,11 @@ if (btnGoogleSignin) {
     };
 }
 
-// Message Listener for Google Sign-in Popup Completion
+// Message Listener for Google Sign-in Popup Completion (Mock fallback flow)
 window.addEventListener('message', async (event) => {
     if (event.data && event.data.type === 'google-login-success') {
         const email = event.data.email;
-        showToast('Verifying Google credentials...', 'var(--accent-blue)');
-
-        try {
-            const res = await fetch(`${API_URL}/api/auth/google`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email })
-            });
-
-            const data = await res.json();
-            if (!res.ok) {
-                throw new Error(data.error || 'Google Authentication failed');
-            }
-
-            // Save Google user session
-            localStorage.setItem(TOKEN_KEY, data.token);
-            localStorage.setItem(EMAIL_KEY, data.user.email);
-
-            showToast('Google Sign-In Successful!', 'var(--success)');
-            closeAuthModal();
-            window.location.href = 'dashboard.html';
-        } catch (err) {
-            alert("Google Authentication Error: " + err.message);
-        }
+        await handleGoogleLoginSuccess({ email });
     }
 });
 

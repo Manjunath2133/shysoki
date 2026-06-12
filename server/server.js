@@ -286,12 +286,41 @@ app.post('/api/auth/reset-password', express.urlencoded({ extended: true }), asy
     }
 });
 
+// 1.35 Get Google Client ID
+app.get('/api/auth/google/client-id', (req, res) => {
+    res.json({ clientId: process.env.GOOGLE_CLIENT_ID || null });
+});
+
 // 1.4 Google Sign-In / Auto-Registration API
 app.post('/api/auth/google', async (req, res) => {
-    const { email } = req.body;
+    const { email: requestEmail, accessToken } = req.body;
+    let email = requestEmail;
 
-    if (!email) {
-        return res.status(400).json({ error: 'Google authentication email is required.' });
+    if (accessToken) {
+        try {
+            const googleRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { 'Authorization': `Bearer ${accessToken}` }
+            });
+            if (!googleRes.ok) {
+                return res.status(401).json({ error: 'Invalid Google access token.' });
+            }
+            const googleUser = await googleRes.json();
+            if (!googleUser.email) {
+                return res.status(400).json({ error: 'Could not retrieve email from Google token.' });
+            }
+            email = googleUser.email;
+        } catch (e) {
+            console.error('Google token verification failed:', e);
+            return res.status(500).json({ error: 'Failed to verify Google token with Google servers.' });
+        }
+    } else {
+        // Mock fallback. If GOOGLE_CLIENT_ID is configured, we must reject unverified logins for security
+        if (process.env.GOOGLE_CLIENT_ID) {
+            return res.status(400).json({ error: 'Google authentication token is required when Google Login is enabled.' });
+        }
+        if (!email) {
+            return res.status(400).json({ error: 'Google authentication email is required.' });
+        }
     }
 
     try {

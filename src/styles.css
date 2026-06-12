@@ -562,3 +562,16 @@ body.ghost-active #btn-billing {
     pointer-events: none !important;
 }
 
+.btn-google {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    transition: all 0.2s;
+}
+
+.btn-google:hover {
+    background: rgba(255, 255, 255, 0.15);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-1px);
+}
+

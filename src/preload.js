@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Commercial Licensing & Authentication
   login: (credentials) => ipcRenderer.invoke('auth:login', credentials),
   register: (credentials) => ipcRenderer.invoke('auth:register', credentials),
+  googleAuth: (clientId) => ipcRenderer.invoke('auth:google', { clientId }),
   logout: () => ipcRenderer.invoke('auth:logout'),
   getBillingState: () => ipcRenderer.invoke('billing:get-state'),
   purchasePlan: (plan) => ipcRenderer.invoke('billing:purchase-plan', plan),

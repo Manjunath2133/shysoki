@@ -367,6 +367,29 @@ btnLogout.onclick = async () => {
     showStatusMessage('Signed out successfully.', 'var(--text-secondary)');
 };
 
+// Google Sign-In click handler
+const btnGoogleSignin = document.getElementById('btn-google-signin');
+if (btnGoogleSignin) {
+    btnGoogleSignin.onclick = async () => {
+        authErrorMsg.style.display = 'none';
+        showStatusMessage('Opening Google Sign-In...', 'var(--accent-blue)');
+        
+        try {
+            const result = await window.electronAPI.googleAuth();
+            if (result.success) {
+                refreshBillingState();
+                showStatusMessage('Successfully Authenticated with Google!', 'var(--success)');
+            } else {
+                authErrorMsg.innerText = result.error || 'Google Authentication failed';
+                authErrorMsg.style.display = 'block';
+            }
+        } catch (err) {
+            authErrorMsg.innerText = 'Failed to connect for Google Auth.';
+            authErrorMsg.style.display = 'block';
+        }
+    };
+}
+
 // Upgrade Buttons Click Handler
 document.querySelectorAll('.btn-buy').forEach(btn => {
     btn.onclick = async () => {
