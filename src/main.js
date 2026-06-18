@@ -13,7 +13,7 @@ const AIService = require('./ai-service');
 const DeepgramService = require('./deepgram-service');
 require('dotenv').config();
 
-const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:5000';
+const BACKEND_URL = process.env.BACKEND_URL || (isDev ? 'http://localhost:5005' : 'https://shysoki-api.onrender.com');
 
 let mainWindow;
 let isGhostMode = false;
@@ -552,7 +552,15 @@ ipcMain.handle('auth:register', async (event, credentials) => {
 });
 
 ipcMain.handle('auth:google', async (event) => {
-    const clientId = process.env.GOOGLE_CLIENT_ID;
+    let clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+        try {
+            const clientRes = await axios.get(`${BACKEND_URL}/api/auth/google/client-id`);
+            clientId = clientRes.data.clientId;
+        } catch (err) {
+            console.error('Failed to fetch Google Client ID from server:', err.message);
+        }
+    }
     
     return new Promise((resolve) => {
         const authWindow = new BrowserWindow({
@@ -650,7 +658,8 @@ ipcMain.handle('auth:google', async (event) => {
 
         if (clientId) {
             // Load real Google OAuth 2.0 endpoint
-            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=http://localhost:5005/api/auth/google/callback&response_type=token&scope=email%20profile%20openid`;
+            const redirectUri = `${BACKEND_URL}/api/auth/google/callback`;
+            const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=token&scope=email%20profile%20openid`;
             authWindow.loadURL(authUrl);
         } else {
             // Load self-contained mock page using data URL
