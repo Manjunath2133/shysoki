@@ -44,12 +44,14 @@
         "dmg"
       ],
       "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "icon": "assets/icon.icns"
     },
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "icon": "assets/icon.ico"
     }
   }
 }

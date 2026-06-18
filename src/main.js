@@ -254,8 +254,7 @@ function createStealthWindow() {
     alwaysOnTop: true,
     skipTaskbar: true,
     hasShadow: false,
-    title: 'Shyoski',
-    icon: null,
+    icon: path.join(__dirname, 'assets', 'logo.png'),
     focusable: true, // Allow focus for context input initially
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
