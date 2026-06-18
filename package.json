@@ -43,7 +43,7 @@
       "target": [
         "dmg"
       ],
-      "hardenedRuntime": true,
+      "hardenedRuntime": false,
       "gatekeeperAssess": false
     },
     "win": {
